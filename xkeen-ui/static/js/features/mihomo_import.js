@@ -1538,7 +1538,7 @@ let mihomoImportModuleApi = null;
           i += 1;
         }
         const header = `# proxies (Xray-подписка: ${group.length} узлов из ${startUri})`;
-        previewSections.push(`${header}\n${group.join('\n')}`);
+        previewSections.push(`${header}\n${group.join('\n\n')}`);
         continue;
       }
       const raw = String(o.content || '').trimEnd();

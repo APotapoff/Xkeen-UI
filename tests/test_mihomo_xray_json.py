@@ -215,3 +215,4 @@ def test_format_proxies_section_indents_each_block():
     assert "proxies" in parsed
     assert len(parsed["proxies"]) == 2
     assert {p["name"] for p in parsed["proxies"]} == {"A", "B"}
+    assert "mode: auto\n\n  - name: B" in text

@@ -302,4 +302,4 @@ def format_proxies_section(proxies: Iterable[ProxyParseResult]) -> str:
         blocks.append(indented)
     if not blocks:
         return "proxies: []\n"
-    return "proxies:\n" + "\n".join(blocks) + "\n"
+    return "proxies:\n" + "\n\n".join(blocks) + "\n"

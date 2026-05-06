@@ -87,6 +87,8 @@ def test_yaml_kind_with_multi_proxy_registers_every_proxy_in_group():
     parsed = yaml.safe_load(result)
 
     assert {p["name"] for p in parsed["proxies"]} == {"A", "B", "C"}
+    assert "uuid: aaaa\n\n  - name: B" in result
+    assert "uuid: bbbb\n\n  - name: C" in result
     selector = next(g for g in parsed["proxy-groups"] if g["name"] == "Selector")
     assert set(selector.get("proxies") or []) == {"A", "B", "C"}
 

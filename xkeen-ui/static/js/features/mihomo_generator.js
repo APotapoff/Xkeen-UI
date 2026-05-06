@@ -1420,7 +1420,7 @@ function initEngineToggle() {
           const items = (data.proxies || [])
             .map((p) => String(p.proxy_yaml || "").trim())
             .filter(Boolean)
-            .join("\n");
+            .join("\n\n");
           if (!items) {
             try { toast("Конвертация не дала ни одного узла.", "error"); } catch (e) {}
             return;

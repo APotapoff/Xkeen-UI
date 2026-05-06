@@ -145,3 +145,11 @@ def test_frontend_mihomo_import_has_xhttp_generation_path():
     assert "xhttp['download-settings'] = downloadSettings;" in src
     assert "'download-settings': streamSettings.xhttpSettings?.['download-settings']" in src
     assert "Keep xhttp synchronous in the shared parser API used by import and proxy tools." in src
+
+
+def test_frontend_xray_json_bulk_preview_keeps_blank_lines_between_proxies():
+    generator_src = (ROOT / "xkeen-ui/static/js/features/mihomo_generator.js").read_text(encoding="utf-8")
+    import_src = (ROOT / "xkeen-ui/static/js/features/mihomo_import.js").read_text(encoding="utf-8")
+
+    assert '.join("\\n\\n")' in generator_src
+    assert "group.join('\\n\\n')" in import_src

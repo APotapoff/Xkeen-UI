@@ -491,8 +491,17 @@ def apply_proxy_insert(
             while insert_at > idx + 1 and lines[insert_at - 1].lstrip().startswith("#"):
                 insert_at -= 1
 
+            has_existing_items = any(
+                item.strip() and not item.lstrip().startswith("#")
+                for item in lines[idx + 1 : insert_at]
+            )
             block_lines = [f"{base_indent}  {block_line}" for block_line in yaml_block_lines]
-            lines[insert_at:insert_at] = block_lines
+            insert_lines = list(block_lines)
+            if has_existing_items and insert_at > idx + 1 and lines[insert_at - 1].strip():
+                insert_lines.insert(0, "")
+            if insert_at < len(lines) and lines[insert_at].strip():
+                insert_lines.append("")
+            lines[insert_at:insert_at] = insert_lines
             inserted = True
             break
 
