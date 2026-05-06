@@ -716,7 +716,10 @@ let mihomoImportModuleApi = null;
         return value.length
           ? result + `${padding}${key}:\n` + value.map((item) => `${padding}  - ${item}`).join('\n') + '\n'
           : result;
-      if (typeof value === 'object') return result + `${padding}${key}:\n${toYaml(value, indent + 2)}`;
+      if (typeof value === 'object') {
+        const nested = toYaml(value, indent + 2);
+        return nested.trim() ? result + `${padding}${key}:\n${nested}` : result;
+      }
       const rendered =
         key === 'name'
           ? `'${String(value).replace(/'/g, "''")}'`
@@ -1168,7 +1171,8 @@ let mihomoImportModuleApi = null;
         headers: streamSettings.wsSettings?.host ? { Host: streamSettings.wsSettings.host } : undefined,
       };
     } else if (streamSettings.network === 'grpc') {
-      common['grpc-opts'] = { 'grpc-service-name': streamSettings.grpcSettings?.serviceName };
+      const grpcServiceName = streamSettings.grpcSettings?.serviceName;
+      if (grpcServiceName) common['grpc-opts'] = { 'grpc-service-name': grpcServiceName };
     } else if (streamSettings.network === 'httpupgrade') {
       common['http-upgrade-opts'] = {
         path: streamSettings.httpupgradeSettings?.path,

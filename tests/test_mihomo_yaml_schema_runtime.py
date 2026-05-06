@@ -134,6 +134,26 @@ def test_mihomo_yaml_schema_runtime_accepts_grpc_multiplexing_fields():
     assert result["diagnostics"] == []
 
 
+def test_mihomo_yaml_schema_runtime_accepts_grpc_without_opts_block():
+    result = _run_mihomo_yaml_schema(
+        "\n".join([
+            "proxies:",
+            "  - name: grpc-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    network: grpc",
+            "    tls: true",
+            "",
+        ])
+    )
+
+    assert result["ok"] is True
+    assert result["parseOk"] is True
+    assert result["diagnostics"] == []
+
+
 def test_mihomo_yaml_schema_runtime_reports_enum_and_type_errors_with_paths():
     result = _run_mihomo_yaml_schema(
         "\n".join([

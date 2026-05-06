@@ -188,8 +188,8 @@ def _convert_vless(
     elif network == "grpc":
         gs = stream.get("grpcSettings") or {}
         service_name = str(gs.get("serviceName") or "").strip()
-        yaml_lines.append("  grpc-opts:")
         if service_name:
+            yaml_lines.append("  grpc-opts:")
             yaml_lines.append(f"    grpc-service-name: {_yaml_str(service_name)}")
     elif network == "httpupgrade":
         hu = stream.get("httpupgradeSettings") or {}

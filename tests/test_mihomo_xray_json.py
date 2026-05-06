@@ -73,6 +73,28 @@ def _outbound_vless_tcp_reality_vision(short_id="ab12cd34"):
     }
 
 
+def _outbound_vless_grpc_without_service():
+    return {
+        "tag": "proxy",
+        "protocol": "vless",
+        "settings": {
+            "vnext": [
+                {
+                    "address": "9.9.9.9",
+                    "port": 443,
+                    "users": [{"id": "33333333-3333-3333-3333-333333333333", "encryption": "none"}],
+                }
+            ]
+        },
+        "streamSettings": {
+            "network": "grpc",
+            "security": "tls",
+            "tlsSettings": {"serverName": "grpc.example.com", "fingerprint": "qq"},
+            "grpcSettings": {},
+        },
+    }
+
+
 def _full_xray_config(remarks, outbound):
     """Wrap an outbound in a full Xray config (matching real subscription format)."""
     return {
@@ -124,6 +146,16 @@ def test_convert_vless_tcp_reality_vision_emits_expected_yaml():
     # short-id roundtrip preserves string type even for hex-with-letters values
     assert ro["short-id"] == "ab12cd34"
     assert isinstance(ro["short-id"], str)
+
+
+def test_convert_vless_grpc_without_service_omits_empty_grpc_opts():
+    result = convert_outbound_to_mihomo(_outbound_vless_grpc_without_service(), "Grpc-Node")
+    assert result is not None
+    parsed = yaml.safe_load(result.yaml)[0]
+
+    assert parsed["network"] == "grpc"
+    assert "grpc-opts" not in parsed
+    assert "grpc-opts:" not in result.yaml
 
 
 @pytest.mark.parametrize("short_id", ["28000000", "12345", "0"])

@@ -128,6 +128,18 @@ def test_parse_vless_xhttp_preserves_download_settings_overrides():
     assert "public-key: download-pbk" in result.yaml
 
 
+def test_parse_vless_grpc_without_service_name_omits_empty_grpc_opts():
+    link = (
+        "vless://11111111-1111-1111-1111-111111111111@example.com:443"
+        "?type=grpc&security=tls&sni=edge.example.com#grpc-node"
+    )
+
+    result = parse_vless(link)
+
+    assert "network: grpc" in result.yaml
+    assert "grpc-opts:" not in result.yaml
+
+
 def test_non_vless_xhttp_is_still_rejected_for_mihomo():
     link = "trojan://secret@example.com:443?type=xhttp&sni=edge.example.com"
 
@@ -153,3 +165,10 @@ def test_frontend_xray_json_bulk_preview_keeps_blank_lines_between_proxies():
 
     assert '.join("\\n\\n")' in generator_src
     assert "group.join('\\n\\n')" in import_src
+
+
+def test_frontend_mihomo_import_skips_empty_grpc_opts_objects():
+    src = (ROOT / "xkeen-ui/static/js/features/mihomo_import.js").read_text(encoding="utf-8")
+
+    assert "const nested = toYaml(value, indent + 2);" in src
+    assert "if (grpcServiceName) common['grpc-opts']" in src

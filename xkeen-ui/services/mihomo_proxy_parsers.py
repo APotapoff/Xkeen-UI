@@ -506,8 +506,8 @@ def parse_vless(link: str, custom_name: Optional[str] = None) -> ProxyParseResul
         service_name = qs.get("serviceName") or qs.get("service_name") or ""
         if service_name:
             service_name = _safe_unquote(service_name)
-        yaml_lines.append("  grpc-opts:")
         if service_name:
+            yaml_lines.append("  grpc-opts:")
             yaml_lines.append(f"    grpc-service-name: {_yaml_str(service_name)}")
     elif type_ == "httpupgrade":
         path = qs.get("path", "/")
@@ -705,8 +705,8 @@ def parse_trojan(link: str, custom_name: Optional[str] = None) -> ProxyParseResu
             yaml_lines.append(f"      Host: {_yaml_str(host)}")
     elif net == "grpc":
         service_name = unquote(_qs_first(qs, "serviceName", "") or _qs_first(qs, "service_name", ""))
-        yaml_lines.append("  grpc-opts:")
         if service_name:
+            yaml_lines.append("  grpc-opts:")
             yaml_lines.append(f"    grpc-service-name: {_yaml_str(service_name)}")
     elif net == "httpupgrade":
         path = unquote(_qs_first(qs, "path", "/") or "/")
@@ -800,8 +800,8 @@ def parse_vmess(link: str, custom_name: Optional[str] = None) -> ProxyParseResul
             yaml_lines.append(f"      Host: {_yaml_str(host)}")
     elif net == "grpc":
         service_name = str(data.get("path") or data.get("serviceName") or "")
-        yaml_lines.append("  grpc-opts:")
         if service_name:
+            yaml_lines.append("  grpc-opts:")
             yaml_lines.append(f"    grpc-service-name: {_yaml_str(service_name)}")
     elif net == "httpupgrade":
         path = str(data.get("path") or "/")
