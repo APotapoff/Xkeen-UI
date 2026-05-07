@@ -66,6 +66,7 @@ from services.mihomo_subscriptions import (
     refresh_due_subscriptions as _mh_sub_refresh_due_subscriptions,
     refresh_subscription as _mh_sub_refresh_subscription,
     sync_from_generator_state as _mh_sub_sync_from_generator_state,
+    update_subscription_settings as _mh_sub_update_subscription_settings,
 )
 from services.xray_subscriptions import fetch_subscription_body as _xray_fetch_subscription_body
 
@@ -1076,6 +1077,24 @@ def create_mihomo_blueprint(
             )
         status = 200 if result.get("ok") else (409 if result.get("error") == "active_config_changed" else 400)
         return jsonify(result), status
+
+    @bp.post("/api/mihomo/subscriptions/<string:sub_id>")
+    def api_mihomo_subscription_update(sub_id: str):
+        """Update settings for one managed Mihomo Xray-JSON subscription."""
+        payload = request.get_json(silent=True) or {}
+        try:
+            subscription = _mh_sub_update_subscription_settings(ui_state_dir, sub_id, payload)
+        except KeyError:
+            return _mihomo_error("Подписка не найдена.", status=404, ok=False, code="subscription_not_found")
+        except Exception as e:
+            return _mihomo_exception(
+                "Не удалось сохранить настройки подписки Mihomo.",
+                code="mihomo_subscription_update_failed",
+                hint="Интервал должен быть от 1 до 168 часов.",
+                exc=e,
+                status=400,
+            )
+        return jsonify({"ok": True, "subscription": subscription}), 200
 
     @bp.post("/api/mihomo/subscriptions/refresh-due")
     def api_mihomo_subscriptions_refresh_due():

@@ -160,6 +160,71 @@ def list_subscriptions(ui_state_dir: str) -> List[Dict[str, Any]]:
     return copy.deepcopy(state.get("subscriptions") or [])
 
 
+def update_subscription_settings(
+    ui_state_dir: str,
+    sub_id: str,
+    payload: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Update persisted settings for one managed Mihomo subscription."""
+    data = payload if isinstance(payload, dict) else {}
+    with _STATE_LOCK:
+        state = load_subscription_state(ui_state_dir)
+        sub_idx, sub = _find_subscription(state, sub_id)
+        if sub_idx < 0 or sub is None:
+            raise KeyError("subscription not found")
+
+        now_ts = _now()
+        entry = dict(sub)
+        old_interval = _clamp_interval(entry.get("interval_hours"))
+        if "interval_hours" in data or "intervalHours" in data or "interval" in data:
+            interval = _clamp_interval(
+                data.get("interval_hours", data.get("intervalHours", data.get("interval")))
+            )
+        else:
+            interval = old_interval
+
+        if "enabled" in data:
+            enabled = bool(data.get("enabled"))
+        else:
+            enabled = bool(entry.get("enabled", True))
+
+        schedule_changed = interval != old_interval or enabled != bool(entry.get("enabled", True))
+        entry["interval_hours"] = interval
+        entry["enabled"] = enabled
+        entry["settings_updated_ts"] = now_ts
+        if not enabled:
+            entry["next_update_ts"] = None
+        elif schedule_changed or entry.get("next_update_ts") in (None, ""):
+            entry["next_update_ts"] = now_ts + interval * 3600
+
+        generator_state = state.get("generator_state")
+        if isinstance(generator_state, dict):
+            proxy_index = _find_proxy_index_for_subscription(generator_state, entry)
+            proxies = generator_state.get("proxies")
+            if proxy_index >= 0 and isinstance(proxies, list) and proxy_index < len(proxies):
+                proxy = proxies[proxy_index]
+                if isinstance(proxy, dict):
+                    meta = _extract_meta(proxy) or {}
+                    meta.update(
+                        {
+                            "id": entry.get("id"),
+                            "url": entry.get("url"),
+                            "tag": entry.get("tag") or _derive_tag_from_url(entry.get("url") or ""),
+                            "enabled": enabled,
+                            "interval_hours": interval,
+                            "proxy_index": proxy_index,
+                        }
+                    )
+                    proxy["xray_json_subscription"] = meta
+                    proxy.pop("xrayJsonSubscription", None)
+                    proxy.pop("xraySubscription", None)
+                    entry["proxy_index"] = proxy_index
+
+        state["subscriptions"][sub_idx] = entry
+        _write_state(ui_state_dir, state)
+        return copy.deepcopy(entry)
+
+
 def _extract_meta(proxy: Dict[str, Any]) -> Dict[str, Any] | None:
     for key in ("xray_json_subscription", "xrayJsonSubscription", "xraySubscription"):
         value = proxy.get(key)
@@ -661,4 +726,5 @@ __all__ = [
     "start_subscription_scheduler",
     "subscription_state_path",
     "sync_from_generator_state",
+    "update_subscription_settings",
 ]

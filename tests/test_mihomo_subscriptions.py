@@ -149,3 +149,23 @@ def test_refresh_subscription_refuses_to_clobber_manual_active_config(tmp_path, 
     assert result["ok"] is False
     assert result["error"] == "active_config_changed"
     assert config_path.read_text(encoding="utf-8") == "manual edit\n"
+
+
+def test_update_subscription_settings_clamps_interval_and_updates_generator_meta(tmp_path):
+    state = _state_with_managed_yaml("- name: Old\n  type: vless\n")
+    saved = svc.sync_from_generator_state(str(tmp_path), state, config_text="config")
+    old_next = saved["subscriptions"][0]["next_update_ts"]
+
+    updated = svc.update_subscription_settings(
+        str(tmp_path),
+        "xray-example",
+        {"interval_hours": 999},
+    )
+
+    assert updated["interval_hours"] == 168
+    assert updated["next_update_ts"] != old_next
+
+    saved = svc.load_subscription_state(str(tmp_path))
+    assert saved["subscriptions"][0]["interval_hours"] == 168
+    proxy_meta = saved["generator_state"]["proxies"][0]["xray_json_subscription"]
+    assert proxy_meta["interval_hours"] == 168

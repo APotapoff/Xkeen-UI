@@ -1571,7 +1571,7 @@ function initEngineToggle() {
           if (!url) return null;
           const tag = String(meta.tag || deriveTagFromUrl(url)).trim() || "xray-sub";
           const intervalRaw = meta.interval_hours !== undefined ? meta.interval_hours : meta.intervalHours;
-          const intervalHours = Math.max(1, Math.min(168, parseInt(String(intervalRaw || "24"), 10) || 24));
+          const intervalHours = clampManagedIntervalHours(intervalRaw);
           const id = String(meta.id || ("xray-" + hashSmall(url))).trim();
           return {
             id,
@@ -1580,6 +1580,12 @@ function initEngineToggle() {
             enabled: meta.enabled !== false,
             intervalHours,
           };
+        }
+
+        function clampManagedIntervalHours(value) {
+          const n = parseInt(String(value || "24"), 10);
+          if (!Number.isFinite(n) || Number.isNaN(n)) return 24;
+          return Math.max(1, Math.min(168, n));
         }
 
         function createSubscriptionRow(value) {
@@ -1674,22 +1680,42 @@ function initEngineToggle() {
             const meta = document.createElement("div");
             meta.className = "mihomo-managed-sub-meta";
             const count = Number(sub && sub.last_count ? sub.last_count : 0);
+            const intervalHours = clampManagedIntervalHours(sub && sub.interval_hours);
             const status = sub && sub.last_ok === false
               ? ("ошибка: " + String(sub.last_error || "refresh_failed"))
               : (count ? (count + " " + plural(count, ["узел", "узла", "узлов"])) : "ещё не обновлялась");
             meta.textContent =
-              status + " · каждые " + String((sub && sub.interval_hours) || 24) +
+              status + " · каждые " + String(intervalHours) +
               " ч · след.: " + formatMihomoSubTime(sub && sub.next_update_ts);
             copy.appendChild(title);
             copy.appendChild(meta);
 
             const actions = document.createElement("div");
             actions.className = "mihomo-managed-sub-actions";
+            const intervalLabel = document.createElement("span");
+            intervalLabel.className = "mihomo-managed-sub-interval-label";
+            intervalLabel.textContent = "ч";
+            const intervalInput = document.createElement("input");
+            intervalInput.type = "number";
+            intervalInput.min = "1";
+            intervalInput.max = "168";
+            intervalInput.step = "1";
+            intervalInput.value = String(intervalHours);
+            intervalInput.className = "mihomo-managed-sub-interval";
+            intervalInput.title = "Интервал обновления: от 1 до 168 часов";
+            const saveBtn = document.createElement("button");
+            saveBtn.type = "button";
+            saveBtn.className = "btn btn-ghost btn-xs";
+            saveBtn.textContent = "Сохранить";
+            saveBtn.onclick = () => saveManagedSubscriptionSettings(String(sub.id || ""), intervalInput.value);
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "btn btn-ghost btn-xs";
             btn.textContent = "Обновить";
             btn.onclick = () => refreshManagedSubscription(String(sub.id || ""));
+            actions.appendChild(intervalInput);
+            actions.appendChild(intervalLabel);
+            actions.appendChild(saveBtn);
             actions.appendChild(btn);
 
             item.appendChild(copy);
@@ -1728,6 +1754,52 @@ function initEngineToggle() {
             await finalizeSessionDraftRestore(draft);
             try { scheduleSessionDraftSave(60); } catch (e) {}
           } catch (e) {}
+        }
+
+        function syncManagedSubscriptionMeta(subscription) {
+          const sub = subscription || {};
+          const meta = normalizeXrayJsonSubscriptionMeta({
+            id: sub.id,
+            url: sub.url,
+            tag: sub.tag,
+            enabled: sub.enabled !== false,
+            interval_hours: sub.interval_hours,
+          });
+          if (!meta) return;
+          try {
+            proxyControllers.forEach((ctrl) => {
+              if (ctrl && typeof ctrl.setXrayJsonSubscription === "function") {
+                ctrl.setXrayJsonSubscription(meta);
+              }
+            });
+          } catch (e) {}
+        }
+
+        async function saveManagedSubscriptionSettings(id, intervalValue) {
+          const subId = String(id || "").trim();
+          if (!subId) return;
+          const intervalHours = clampManagedIntervalHours(intervalValue);
+          setStatus("Сохраняю интервал автообновления Mihomo...", "ok");
+          try {
+            const res = await fetch("/api/mihomo/subscriptions/" + encodeURIComponent(subId), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ interval_hours: intervalHours }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+            syncManagedSubscriptionMeta(data.subscription);
+            await loadManagedSubscriptions(true);
+            const msg = "Интервал обновления сохранён: " + intervalHours + " ч.";
+            setStatus(msg, "ok");
+            try { toast(msg, "success"); } catch (e) {}
+            try { scheduleSessionDraftSave(60); } catch (e) {}
+          } catch (e) {
+            const msg = "Не удалось сохранить интервал: " + (e && e.message ? e.message : e);
+            setStatus(msg, "err");
+            try { toast(msg, "error"); } catch (e2) {}
+            await loadManagedSubscriptions(true);
+          }
         }
 
         async function refreshManagedSubscription(id) {
@@ -1913,7 +1985,7 @@ function initEngineToggle() {
       
         function createProxyCard(initial) {
           const idx = proxyControllers.length + 1;
-          const xrayJsonSubscription = normalizeXrayJsonSubscriptionMeta(
+          let xrayJsonSubscription = normalizeXrayJsonSubscriptionMeta(
             initial && (initial.xrayJsonSubscription || initial.xray_json_subscription)
           );
           const wrapper = document.createElement("div");
@@ -2164,6 +2236,12 @@ function initEngineToggle() {
               }
               else out.link = data.trim();
               return out;
+            },
+            setXrayJsonSubscription: (meta) => {
+              const next = normalizeXrayJsonSubscriptionMeta(meta);
+              if (!next || !xrayJsonSubscription || next.id !== xrayJsonSubscription.id) return false;
+              xrayJsonSubscription = next;
+              return true;
             },
           };
       
