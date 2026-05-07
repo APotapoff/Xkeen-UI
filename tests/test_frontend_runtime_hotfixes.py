@@ -133,6 +133,10 @@ def test_mihomo_generator_xray_subscription_prompt_uses_theme_confirm_modal():
     assert 'title: "Конвертировать Xray-JSON подписку?",' in script
     assert 'okText: "Конвертировать",' in script
     assert 'cancelText: "Оставить как подписку",' in script
+    assert 'function resetXrayProbeState(row) {' in script
+    assert 'input.addEventListener("input", scheduleProbe);' in script
+    assert 'clearXrayProbeTimer(input);' in script
+    assert 'resetXrayProbeState(row);' in script
     assert 'window.confirm(' not in script
     assert "import '../ui/confirm_modal.js';" in bootstrap
     assert 'id="confirm-modal"' in template

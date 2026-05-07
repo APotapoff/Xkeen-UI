@@ -1402,14 +1402,46 @@ function initEngineToggle() {
         // After the user finishes editing a subscription URL, probe it for
         // Xray JSON. If detected, offer to convert to a YAML proxy block.
         const _xrayProbeTimers = new WeakMap();
+
+        function getSubscriptionInputValue(input) {
+          return String((input && input.value) || "").trim();
+        }
+
+        function clearXrayProbeTimer(input) {
+          const old = _xrayProbeTimers.get(input);
+          if (old) clearTimeout(old);
+          _xrayProbeTimers.delete(input);
+        }
+
+        function resetXrayProbeState(row) {
+          if (!row) return;
+          row._xrayProbedValue = "";
+          row._xrayPendingValue = "";
+          row._xrayLastInputValue = "";
+        }
+
+        function noteXrayProbeInputChange(input, row) {
+          if (!row) return;
+          const url = getSubscriptionInputValue(input);
+          if (row._xrayLastInputValue !== url) {
+            row._xrayLastInputValue = url;
+            row._xrayProbedValue = "";
+            if (!url) row._xrayPendingValue = "";
+          }
+        }
+
         async function maybeOfferXrayConversion(input, row) {
           if (!isMihomoGeneratorDocument()) return;
           if (!input || !row || (subscriptionsList && !subscriptionsList.contains(row))) return;
-          const url = String(input.value || "").trim();
+          noteXrayProbeInputChange(input, row);
+          const url = getSubscriptionInputValue(input);
           if (!url || !/^https?:\/\//i.test(url)) return;
           if (row._xrayProbedValue === url) return;
+          if (row._xrayInProgress) {
+            row._xrayPendingValue = url;
+            return;
+          }
           row._xrayProbedValue = url;
-          if (row._xrayInProgress) return;
           row._xrayInProgress = true;
 
           let data = null;
@@ -1417,10 +1449,21 @@ function initEngineToggle() {
             data = await fetchXrayJsonParse(url);
           } catch (e) {
             console.warn("Xray-JSON probe failed for", url, e);
+            row._xrayProbedValue = "";
             row._xrayInProgress = false;
             return;
           }
           row._xrayInProgress = false;
+          const pendingUrl = String(row._xrayPendingValue || "");
+          row._xrayPendingValue = "";
+          if (!isMihomoGeneratorDocument() || (subscriptionsList && !subscriptionsList.contains(row))) return;
+          if (getSubscriptionInputValue(input) !== url) {
+            row._xrayProbedValue = "";
+            if (pendingUrl && pendingUrl === getSubscriptionInputValue(input)) {
+              setTimeout(() => maybeOfferXrayConversion(input, row), 0);
+            }
+            return;
+          }
           if (!data) return;  // not Xray JSON — silent, fall through to normal proxy-provider
 
           const count = Number(data.count || 0);
@@ -1445,6 +1488,8 @@ function initEngineToggle() {
             cancelText: "Оставить как подписку",
             danger: false,
           }, fallbackMessage);
+          if (!isMihomoGeneratorDocument() || (subscriptionsList && !subscriptionsList.contains(row))) return;
+          if (getSubscriptionInputValue(input) !== url) return;
           if (!ok) {
             return;
           }
@@ -1462,7 +1507,9 @@ function initEngineToggle() {
             data: items,
             tags: deriveTagFromUrl(url),
           });
+          clearXrayProbeTimer(input);
           input.value = "";
+          resetXrayProbeState(row);
           try {
             toast(
               "Распознана Xray-подписка: " + count + " " +
@@ -1501,6 +1548,7 @@ function initEngineToggle() {
           input.type = "text";
           input.placeholder = "https://example.com/sub";
           input.value = value || "";
+          row._xrayLastInputValue = getSubscriptionInputValue(input);
 
           // Автопредпросмотр при изменении URL подписки
           autoPreviewOnChange(input, ["change", "blur", "input"], 400);
@@ -1509,12 +1557,13 @@ function initEngineToggle() {
           // that mid-typing doesn't trigger a probe — only fires shortly after
           // the user pauses or blurs the input.
           const scheduleProbe = () => {
-            const old = _xrayProbeTimers.get(input);
-            if (old) clearTimeout(old);
+            noteXrayProbeInputChange(input, row);
+            clearXrayProbeTimer(input);
             _xrayProbeTimers.set(input, setTimeout(() => {
               maybeOfferXrayConversion(input, row);
             }, 700));
           };
+          input.addEventListener("input", scheduleProbe);
           input.addEventListener("blur", () => maybeOfferXrayConversion(input, row));
           input.addEventListener("paste", () => setTimeout(scheduleProbe, 50));
           input.addEventListener("change", scheduleProbe);
@@ -1524,6 +1573,7 @@ function initEngineToggle() {
           btn.className = "btn btn-ghost btn-xs";
           btn.textContent = "✕";
           btn.onclick = () => {
+            clearXrayProbeTimer(input);
             subscriptionsList.removeChild(row);
             if (!subscriptionsList.children.length) {
               subscriptionsList.appendChild(createSubscriptionRow(""));
