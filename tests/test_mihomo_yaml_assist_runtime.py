@@ -173,6 +173,120 @@ def test_proxy_network_completion_suggests_xhttp_transport():
     assert "xhttp" in result["labels"]
 
 
+def test_proxy_key_completion_suggests_documented_vless_tls_fields():
+    result = _run_completion(
+        "\n".join([
+            "proxies:",
+            "  - name: reality-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    e__CURSOR__",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["context"]["kind"] == "key"
+    assert "encryption" in result["labels"]
+
+    result = _run_completion(
+        "\n".join([
+            "proxies:",
+            "  - name: reality-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    pa__CURSOR__",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["context"]["kind"] == "key"
+    assert "packet-encoding" in result["labels"]
+
+    result = _run_completion(
+        "\n".join([
+            "proxies:",
+            "  - name: xhttp-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    a__CURSOR__",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["context"]["kind"] == "key"
+    assert "alpn" in result["labels"]
+
+
+def test_reality_opts_completion_suggests_support_x25519mlkem768():
+    result = _run_completion(
+        "\n".join([
+            "proxies:",
+            "  - name: reality-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    tls: true",
+            "    servername: www.microsoft.com",
+            "    client-fingerprint: random",
+            "    reality-opts:",
+            "      support-__CURSOR__",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["context"]["kind"] == "key"
+    assert "support-x25519mlkem768" in result["labels"]
+
+
+def test_proxy_hover_explains_documented_vless_tls_fields():
+    result = _run_hover(
+        "\n".join([
+            "proxies:",
+            "  - name: reality-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    packet-enc__CURSOR__oding: xudp",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["path"] == "proxies[0].packet-encoding"
+    assert "UDP packet encoding" in result["plain"]
+    assert "xudp" in result["plain"]
+
+    result = _run_hover(
+        "\n".join([
+            "proxies:",
+            "  - name: reality-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    reality-opts:",
+            "      support-x25519__CURSOR__mlkem768: true",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["path"] == "proxies[0].reality-opts.support-x25519mlkem768"
+    assert "X25519-MLKEM768" in result["plain"]
+
+
 def test_key_completion_reuses_existing_yaml_mapping_delimiter_without_duplicating_colon():
     result = _apply_completion("log-lev__CURSOR__: silent\n", "log-level")
 

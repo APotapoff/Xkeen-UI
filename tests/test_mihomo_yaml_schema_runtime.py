@@ -109,6 +109,89 @@ def test_mihomo_yaml_schema_runtime_accepts_xhttp_and_reuse_settings():
     assert result["diagnostics"] == []
 
 
+def test_mihomo_yaml_schema_runtime_accepts_documented_vless_tls_reality_fields():
+    result = _run_mihomo_yaml_schema(
+        "\n".join([
+            "proxies:",
+            "  - name: reality-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    flow: xtls-rprx-vision",
+            '    encryption: ""',
+            "    packet-encoding: xudp",
+            "    network: tcp",
+            "    udp: true",
+            "    tls: true",
+            "    servername: www.microsoft.com",
+            "    alpn: [h2, http/1.1]",
+            "    client-fingerprint: random",
+            "    reality-opts:",
+            "      public-key: z7ObaBEwG9lXYX2JPQsFNWIXcH25ywpLIf4_g9LqSX4",
+            "      short-id: 2c7282bf6de028b8",
+            "      support-x25519mlkem768: true",
+            "",
+        ])
+    )
+
+    assert result["ok"] is True
+    assert result["parseOk"] is True
+    assert result["diagnostics"] == []
+
+
+def test_mihomo_yaml_schema_runtime_accepts_documented_xhttp_extended_fields():
+    result = _run_mihomo_yaml_schema(
+        "\n".join([
+            "proxies:",
+            "  - name: xhttp-node",
+            "    type: vless",
+            "    server: edge.example.com",
+            "    port: 443",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "    network: xhttp",
+            "    tls: true",
+            "    servername: edge.example.com",
+            "    alpn: [h2]",
+            '    encryption: ""',
+            "    xhttp-opts:",
+            "      path: /gateway",
+            "      host: edge.example.com",
+            "      mode: auto",
+            "      x-padding-obfs-mode: true",
+            "      x-padding-key: x_padding",
+            "      x-padding-header: Referer",
+            "      x-padding-placement: queryInHeader",
+            "      x-padding-method: tokenish",
+            "      uplink-http-method: PATCH",
+            "      session-placement: path",
+            "      session-key: sid",
+            "      seq-placement: path",
+            "      seq-key: seq",
+            "      uplink-data-placement: header",
+            "      uplink-data-key: x-up",
+            "      uplink-chunk-size: 4096",
+            "      sc-min-posts-interval-ms: 30",
+            "      reuse-settings:",
+            "        h-keep-alive-period: 0",
+            "      download-settings:",
+            "        server: dl.example.com",
+            "        port: 443",
+            "        tls: true",
+            "        alpn: [h2]",
+            "        reality-opts:",
+            "          public-key: z7ObaBEwG9lXYX2JPQsFNWIXcH25ywpLIf4_g9LqSX4",
+            "          short-id: 2c7282bf6de028b8",
+            "          support-x25519mlkem768: true",
+            "",
+        ])
+    )
+
+    assert result["ok"] is True
+    assert result["parseOk"] is True
+    assert result["diagnostics"] == []
+
+
 def test_mihomo_yaml_schema_runtime_accepts_grpc_multiplexing_fields():
     result = _run_mihomo_yaml_schema(
         "\n".join([

@@ -816,14 +816,32 @@ def test_mihomo_schema_tracks_xhttp_transport_and_multiplexing_fields():
 
     assert 'xhttp' in proxy_props['network']['enum']
     assert proxy_props['xhttp-opts']['$ref'] == '#/definitions/xhttpOpts'
+    assert 'encryption' in proxy_props
+    assert 'packet-encoding' in proxy_props
+    assert 'xudp' in proxy_props['packet-encoding']['enum']
+    assert 'alpn' in proxy_props
+    assert 'ech-opts' in proxy_props
+    assert 'certificate' in proxy_props
+    assert 'private-key' in proxy_props
+    assert 'support-x25519mlkem768' in proxy_props['reality-opts']['properties']
 
     grpc_props = proxy_props['grpc-opts']['properties']
+    assert 'grpc-user-agent' in grpc_props
     assert 'max-connections' in grpc_props
     assert 'min-streams' in grpc_props
     assert 'max-streams' in grpc_props
 
     xhttp_opts = schema['definitions']['xhttpOpts']['properties']
     assert 'auto' in xhttp_opts['mode']['enum']
+    assert 'x-padding-obfs-mode' in xhttp_opts
+    assert 'queryInHeader' in xhttp_opts['x-padding-placement']['enum']
+    assert 'tokenish' in xhttp_opts['x-padding-method']['enum']
+    assert 'uplink-http-method' in xhttp_opts
+    assert 'session-placement' in xhttp_opts
+    assert 'seq-placement' in xhttp_opts
+    assert 'uplink-data-placement' in xhttp_opts
+    assert 'uplink-chunk-size' in xhttp_opts
+    assert 'sc-min-posts-interval-ms' in xhttp_opts
     assert xhttp_opts['reuse-settings']['$ref'] == '#/definitions/xhttpReuseSettings'
     assert xhttp_opts['download-settings']['$ref'] == '#/definitions/xhttpDownloadSettings'
 
@@ -832,6 +850,11 @@ def test_mihomo_schema_tracks_xhttp_transport_and_multiplexing_fields():
     assert 'max-connections' in reuse_props
     assert 'h-max-request-times' in reuse_props
     assert 'h-max-reusable-secs' in reuse_props
+    assert 'h-keep-alive-period' in reuse_props
+
+    download_props = schema['definitions']['xhttpDownloadSettings']['properties']
+    assert 'support-x25519mlkem768' in download_props['reality-opts']['properties']
+    assert 'query-server-name' in download_props['ech-opts']['properties']
 
 
 def test_runtime_vendor_assets_exist_after_frontend_build():

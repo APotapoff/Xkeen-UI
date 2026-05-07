@@ -791,6 +791,11 @@
           "default": false,
           "description": "Пропустить проверку TLS-сертификата сервера. Безопасно ТОЛЬКО для тестов/self-signed. На проде всегда `false`."
         },
+        "sni": {
+          "type": "string",
+          "description": "SNI (Server Name Indication) для TLS. В VMess/VLESS документация Mihomo чаще использует поле `servername`; `sni` остаётся общим TLS-алиасом.",
+          "examples": ["www.cloudflare.com", "edge.example.com"]
+        },
         "servername": {
           "type": "string",
           "description": "SNI (Server Name Indication). Для reality — это тот домен, которым маскируется соединение (должен быть в allow-listе сервера).",
@@ -799,6 +804,31 @@
         "fingerprint": {
           "type": "string",
           "description": "SHA-256 отпечаток сертификата сервера (pinning). Если задан — сертификат проверяется по отпечатку вместо цепочки CA."
+        },
+        "alpn": {
+          "type": "array",
+          "description": "Список ALPN-протоколов TLS в порядке приоритета. Для XHTTP по умолчанию используется h2; для h3 или HTTP/1.1 укажите `alpn: [h3]` или `alpn: [http/1.1]`.",
+          "items": {
+            "type": "string",
+            "examples": ["h2", "http/1.1", "h3"]
+          },
+          "examples": [["h2", "http/1.1"], ["h3"]]
+        },
+        "certificate": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "Клиентский сертификат для mTLS: PEM-содержимое или путь к файлу. Используется вместе с `private-key`.",
+          "examples": ["/opt/etc/mihomo/client.crt"]
+        },
+        "private-key": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "Приватный ключ клиента для mTLS: PEM-содержимое или путь к файлу. Используется вместе с `certificate`.",
+          "examples": ["/opt/etc/mihomo/client.key"]
         },
         "client-fingerprint": {
           "type": "string",
@@ -846,6 +876,17 @@
           "enum": ["xtls-rprx-vision", ""],
           "description": "XTLS flow для VLESS. `xtls-rprx-vision` — рекомендуемый flow для vless+reality/tls (несовместим с mux/grpc/xhttp). Пустая строка — flow выключен."
         },
+        "packet-encoding": {
+          "type": "string",
+          "enum": ["", "packetaddr", "xudp"],
+          "description": "UDP packet encoding для VLESS. Пустая строка означает raw/original encoding; `packetaddr` поддерживается v2ray 5+, `xudp` — Xray/Mihomo-сценарии.",
+          "examples": ["xudp", "packetaddr", ""]
+        },
+        "encryption": {
+          "type": "string",
+          "description": "VLESS encryption. Для обычного VLESS в Mihomo часто указывают пустую строку (`encryption: \"\"`); новые PQ/ML-KEM варианты задаются длинной строкой `mlkem768x25519plus...` согласно документации Mihomo.",
+          "examples": ["", "mlkem768x25519plus.native/random.1rtt"]
+        },
         "reality-opts": {
           "type": "object",
           "description": "Параметры VLESS Reality. Используются с `type: vless`, `tls: true` и подходящим `client-fingerprint`.",
@@ -862,6 +903,29 @@
               "type": "string",
               "description": "Короткий идентификатор (hex, 0–16 символов). Должен совпадать с одним из `shortIds` на сервере.",
               "examples": ["", "abcd1234", "0123456789abcdef"]
+            },
+            "support-x25519mlkem768": {
+              "type": "boolean",
+              "default": false,
+              "description": "Включить поддержку гибридного обмена ключами X25519-MLKEM768 для Reality."
+            }
+          }
+        },
+        "ech-opts": {
+          "type": "object",
+          "description": "Параметры ECH (Encrypted Client Hello) для TLS. Если `config` пустой, клиент может получать ECHConfig через DNS.",
+          "properties": {
+            "enable": {
+              "type": "boolean",
+              "description": "Включить ECH для этого прокси."
+            },
+            "config": {
+              "type": "string",
+              "description": "Base64-encoded ECHConfig. Если не задан, Mihomo может резолвить конфигурацию через DNS."
+            },
+            "query-server-name": {
+              "type": "string",
+              "description": "Доменное имя, которое использовать при DNS-запросе ECHConfig."
             }
           }
         },
@@ -889,10 +953,44 @@
               "description": "Имя gRPC service. Должно совпадать с серверным.",
               "examples": ["api", "GunService"]
             },
+            "grpc-user-agent": {
+              "type": "string",
+              "description": "User-Agent для gRPC transport.",
+              "examples": ["grpc-go/1.66.0", "mihomo"]
+            },
             "ping-interval": { "type": "integer", "minimum": 0, "description": "Интервал ping для gRPC в секундах" },
             "max-connections": { "type": "integer", "minimum": 0, "description": "Максимум gRPC-соединений для мультиплексирования" },
             "min-streams": { "type": "integer", "minimum": 0, "description": "Минимум потоков на соединение перед открытием нового" },
             "max-streams": { "type": "integer", "minimum": 0, "description": "Максимум потоков на соединение" }
+          }
+        },
+        "http-opts": {
+          "type": "object",
+          "description": "Настройки HTTP transport, действуют при `network: http`.",
+          "properties": {
+            "method": {
+              "type": "string",
+              "description": "HTTP-метод для transport-запроса.",
+              "examples": ["GET", "POST"]
+            },
+            "path": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ],
+              "description": "HTTP-путь или список путей для transport-запроса.",
+              "examples": ["/", ["/api", "/gateway"]]
+            },
+            "headers": {
+              "type": "object",
+              "description": "HTTP-заголовки transport-запроса.",
+              "additionalProperties": {
+                "oneOf": [
+                  { "type": "string" },
+                  { "type": "array", "items": { "type": "string" } }
+                ]
+              }
+            }
           }
         },
         "h2-opts": {
@@ -952,6 +1050,17 @@
             "required": ["network"],
             "properties": {
               "network": { "const": "grpc" }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["http-opts"]
+          },
+          "then": {
+            "required": ["network"],
+            "properties": {
+              "network": { "const": "http" }
             }
           }
         },
@@ -1022,7 +1131,8 @@
         "max-connections": { "type": ["integer", "string"], "description": "Максимум XHTTP-соединений." },
         "c-max-reuse-times": { "type": ["integer", "string"], "description": "Лимит повторного использования соединения клиентом." },
         "h-max-request-times": { "type": ["integer", "string"], "description": "Лимит количества запросов на HTTP-соединение." },
-        "h-max-reusable-secs": { "type": ["integer", "string"], "description": "Максимальное время повторного использования HTTP-соединения в секундах." }
+        "h-max-reusable-secs": { "type": ["integer", "string"], "description": "Максимальное время повторного использования HTTP-соединения в секундах." },
+        "h-keep-alive-period": { "type": ["integer", "string"], "description": "Период keep-alive для HTTP-соединений XHTTP." }
       }
     },
 
@@ -1035,14 +1145,76 @@
         "headers": { "type": "object", "description": "Дополнительные HTTP-заголовки.", "additionalProperties": { "type": "string" } },
         "no-grpc-header": { "type": "boolean", "description": "Не добавлять gRPC-совместимый заголовок." },
         "x-padding-bytes": { "type": ["integer", "string"], "description": "Диапазон или количество XPadding-байтов." },
+        "x-padding-obfs-mode": { "type": "boolean", "description": "Включить обфускацию XPadding." },
+        "x-padding-key": { "type": "string", "description": "Ключ/имя параметра, cookie или заголовка для значения XPadding." },
+        "x-padding-header": { "type": "string", "description": "HTTP-заголовок для XPadding, когда placement использует header/queryInHeader." },
+        "x-padding-placement": {
+          "type": "string",
+          "enum": ["queryInHeader", "cookie", "header", "query"],
+          "description": "Куда помещать XPadding: queryInHeader, cookie, header или query."
+        },
+        "x-padding-method": {
+          "type": "string",
+          "enum": ["repeat-x", "tokenish"],
+          "description": "Метод генерации XPadding: повтор символа X или token-like строка."
+        },
+        "uplink-http-method": {
+          "type": "string",
+          "description": "HTTP-метод для uplink-запросов XHTTP.",
+          "examples": ["POST", "PUT", "PATCH", "DELETE"]
+        },
+        "session-placement": {
+          "type": "string",
+          "enum": ["path", "query", "cookie", "header"],
+          "description": "Где размещать идентификатор XHTTP-сессии."
+        },
+        "session-key": { "type": "string", "description": "Ключ для идентификатора XHTTP-сессии." },
+        "seq-placement": {
+          "type": "string",
+          "enum": ["path", "query", "cookie", "header"],
+          "description": "Где размещать порядковый номер XHTTP-запроса."
+        },
+        "seq-key": { "type": "string", "description": "Ключ для порядкового номера XHTTP-запроса." },
+        "uplink-data-placement": {
+          "type": "string",
+          "enum": ["body", "cookie", "header"],
+          "description": "Где размещать фрагменты uplink-данных в режиме packet-up."
+        },
+        "uplink-data-key": { "type": "string", "description": "Базовое имя ключа для фрагментов uplink-данных." },
+        "uplink-chunk-size": {
+          "type": ["integer", "string"],
+          "minimum": 64,
+          "description": "Максимальный размер uplink-фрагмента, если данные идут не в body. Минимум 64 байта."
+        },
         "sc-max-each-post-bytes": { "type": ["integer", "string"], "description": "Максимальный размер каждого POST-запроса для stream-up." },
+        "sc-min-posts-interval-ms": { "type": ["integer", "string"], "description": "Минимальный интервал между POST-запросами XHTTP в миллисекундах." },
         "reuse-settings": { "$ref": "#/definitions/xhttpReuseSettings" },
         "server": { "type": "string", "description": "Переопределённый адрес download-сервера." },
         "port": { "type": ["integer", "string"], "description": "Переопределённый порт download-сервера." },
         "tls": { "type": "boolean", "description": "Включить TLS для download-settings." },
-        "alpn": { "type": "array", "items": { "type": "string" }, "description": "ALPN-список для download-settings." },
-        "ech-opts": { "type": "object", "description": "Параметры ECH для download-settings." },
-        "reality-opts": { "type": "object", "description": "Параметры REALITY для download-settings." },
+        "alpn": {
+          "type": "array",
+          "items": { "type": "string", "examples": ["h2", "http/1.1", "h3"] },
+          "description": "ALPN-список для download-settings."
+        },
+        "ech-opts": {
+          "type": "object",
+          "description": "Параметры ECH для download-settings.",
+          "properties": {
+            "enable": { "type": "boolean", "description": "Включить ECH." },
+            "config": { "type": "string", "description": "Base64-encoded ECHConfig." },
+            "query-server-name": { "type": "string", "description": "Домен для DNS-запроса ECHConfig." }
+          }
+        },
+        "reality-opts": {
+          "type": "object",
+          "description": "Параметры REALITY для download-settings.",
+          "properties": {
+            "public-key": { "type": "string", "description": "Публичный ключ Reality-сервера." },
+            "short-id": { "type": "string", "description": "Short ID Reality-сервера." },
+            "support-x25519mlkem768": { "type": "boolean", "description": "Включить поддержку X25519-MLKEM768." }
+          }
+        },
         "skip-cert-verify": { "type": "boolean", "description": "Пропустить проверку сертификата." },
         "fingerprint": { "type": "string", "description": "TLS fingerprint." },
         "certificate": {
@@ -1059,6 +1231,7 @@
           ],
           "description": "Приватный ключ клиента."
         },
+        "sni": { "type": "string", "description": "SNI для download-settings." },
         "servername": { "type": "string", "description": "SNI для download-settings." },
         "client-fingerprint": { "type": "string", "description": "Клиентский TLS fingerprint." }
       }
@@ -1089,7 +1262,49 @@
         "headers": { "type": "object", "description": "Дополнительные HTTP-заголовки.", "additionalProperties": { "type": "string" } },
         "no-grpc-header": { "type": "boolean", "description": "Не добавлять gRPC-совместимый заголовок." },
         "x-padding-bytes": { "type": ["integer", "string"], "description": "Диапазон или количество XPadding-байтов." },
+        "x-padding-obfs-mode": { "type": "boolean", "description": "Включить обфускацию XPadding." },
+        "x-padding-key": { "type": "string", "description": "Ключ/имя параметра, cookie или заголовка для значения XPadding." },
+        "x-padding-header": { "type": "string", "description": "HTTP-заголовок для XPadding, когда placement использует header/queryInHeader." },
+        "x-padding-placement": {
+          "type": "string",
+          "enum": ["queryInHeader", "cookie", "header", "query"],
+          "description": "Куда помещать XPadding: queryInHeader, cookie, header или query."
+        },
+        "x-padding-method": {
+          "type": "string",
+          "enum": ["repeat-x", "tokenish"],
+          "description": "Метод генерации XPadding: повтор символа X или token-like строка."
+        },
+        "uplink-http-method": {
+          "type": "string",
+          "description": "HTTP-метод для uplink-запросов XHTTP.",
+          "examples": ["POST", "PUT", "PATCH", "DELETE"]
+        },
+        "session-placement": {
+          "type": "string",
+          "enum": ["path", "query", "cookie", "header"],
+          "description": "Где размещать идентификатор XHTTP-сессии."
+        },
+        "session-key": { "type": "string", "description": "Ключ для идентификатора XHTTP-сессии." },
+        "seq-placement": {
+          "type": "string",
+          "enum": ["path", "query", "cookie", "header"],
+          "description": "Где размещать порядковый номер XHTTP-запроса."
+        },
+        "seq-key": { "type": "string", "description": "Ключ для порядкового номера XHTTP-запроса." },
+        "uplink-data-placement": {
+          "type": "string",
+          "enum": ["body", "cookie", "header"],
+          "description": "Где размещать фрагменты uplink-данных в режиме packet-up."
+        },
+        "uplink-data-key": { "type": "string", "description": "Базовое имя ключа для фрагментов uplink-данных." },
+        "uplink-chunk-size": {
+          "type": ["integer", "string"],
+          "minimum": 64,
+          "description": "Максимальный размер uplink-фрагмента, если данные идут не в body. Минимум 64 байта."
+        },
         "sc-max-each-post-bytes": { "type": ["integer", "string"], "description": "Максимальный размер каждого POST-запроса для stream-up." },
+        "sc-min-posts-interval-ms": { "type": ["integer", "string"], "description": "Минимальный интервал между POST-запросами XHTTP в миллисекундах." },
         "reuse-settings": { "$ref": "#/definitions/xhttpReuseSettings" },
         "download-settings": { "$ref": "#/definitions/xhttpDownloadSettings" }
       }
