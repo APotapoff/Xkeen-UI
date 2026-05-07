@@ -177,6 +177,7 @@ let mihomoGeneratorModuleApi = null;
         const defaultGroupsInput = document.getElementById("defaultGroupsInput");
         const subscriptionsList = document.getElementById("subscriptionsList");
         const addSubscriptionBtn = document.getElementById("addSubscriptionBtn");
+        const managedSubscriptionsBlock = document.getElementById("mihomoManagedSubscriptionsBlock");
         const managedSubscriptionsList = document.getElementById("mihomoManagedSubscriptionsList");
         const reloadManagedSubscriptionsBtn = document.getElementById("reloadMihomoManagedSubsBtn");
         const refreshManagedDueBtn = document.getElementById("refreshMihomoManagedDueBtn");
@@ -1717,11 +1718,10 @@ function initEngineToggle() {
           managedSubscriptionsList.textContent = "";
 
           const subs = mergeManagedSubscriptions(items);
+          if (managedSubscriptionsBlock) {
+            managedSubscriptionsBlock.hidden = !subs.length;
+          }
           if (!subs.length) {
-            const empty = document.createElement("div");
-            empty.className = "mihomo-managed-sub-empty";
-            empty.textContent = "Пока нет Xray-JSON подписок из генератора.";
-            managedSubscriptionsList.appendChild(empty);
             return;
           }
 
