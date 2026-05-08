@@ -3013,7 +3013,9 @@ html[data-theme="light"] .btn-link:hover {
   /* Important: don't let the log <pre> size itself by content in flex layout */
   flex: 1 1 0 !important;
   min-height: 0 !important;
+  max-height: none !important;
   height: 0 !important;
+  overflow: auto !important;
   resize: none !important;
 }
 
@@ -29227,6 +29229,16 @@ html[data-theme="light"] .xk-routing-monaco-menu-sep {
     grid-column: 1 / -1;
     justify-self: start;
   }
+}
+
+/* Live Xray logs are user-resizable; keep the generic restart-log cap from
+   limiting the browser resize handle on the online logs card. */
+body.panel-page #view-xray-logs .log-card:not(.is-fullscreen) .xray-log-block {
+  height: 420px;
+  min-height: 420px;
+  max-height: none;
+  resize: vertical;
+  overflow: auto;
 }
 
 @media (max-width: 420px) {

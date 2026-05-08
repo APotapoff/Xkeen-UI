@@ -1665,6 +1665,29 @@ def test_xray_logs_height_prefs_keep_local_draft_and_survive_hidden_view_saves()
     assert 'if (_logsViewPrefsUserTouched) persistLocalLogsViewDraft();' in text
 
 
+def test_xray_logs_css_keeps_live_window_resizable_past_restart_log_cap():
+    css = Path('xkeen-ui/static/styles.css').read_text(encoding='utf-8')
+
+    generic_cap = 'body.panel-page .log-card .log-block {\n    min-height: 140px;\n    max-height: 220px;'
+    fullscreen_selector = '.log-card.is-fullscreen .xray-log-block'
+    selector = 'body.panel-page #view-xray-logs .log-card:not(.is-fullscreen) .xray-log-block'
+    assert generic_cap in css
+    assert fullscreen_selector in css
+    assert selector in css
+    assert css.index(fullscreen_selector) < css.index(generic_cap)
+    assert css.index(selector) > css.index(generic_cap)
+
+    fullscreen_block = css.split(fullscreen_selector + '{', 1)[1].split('\n}', 1)[0]
+    assert 'flex: 1 1 0 !important;' in fullscreen_block
+    assert 'max-height: none !important;' in fullscreen_block
+    assert 'overflow: auto !important;' in fullscreen_block
+
+    block = css.split(selector + ' {', 1)[1].split('\n}', 1)[0]
+    assert 'max-height: none;' in block
+    assert 'resize: vertical;' in block
+    assert 'overflow: auto;' in block
+
+
 def test_file_manager_non_navigation_refreshes_do_not_consume_path_input_drafts():
     editor_text = Path('xkeen-ui/static/js/features/file_manager/editor.js').read_text(encoding='utf-8')
     listing_text = Path('xkeen-ui/static/js/features/file_manager/listing.js').read_text(encoding='utf-8')
