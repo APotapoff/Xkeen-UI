@@ -1143,6 +1143,25 @@ let mihomoImportModuleApi = null;
         .padEnd(str.length + ((4 - (str.length % 4)) % 4), '='),
     );
 
+  const YAML_STRING_VALUE_KEYS = new Set(['short-id']);
+  const YAML_KEYWORDS = new Set(['null', '~', 'true', 'false', 'yes', 'no', 'on', 'off']);
+  const YAML_NEEDS_QUOTING_RE = /[\s:#\[\]{}&,*>!%`"'|@?]/;
+
+  function yamlStringScalar(value) {
+    const s = String(value == null ? '' : value).replace(/\r/g, '').replace(/\n/g, ' ');
+    const low = s.trim().toLowerCase();
+    if (
+      s === '' ||
+      YAML_KEYWORDS.has(low) ||
+      YAML_NEEDS_QUOTING_RE.test(s) ||
+      /^[-?:&*]/.test(s) ||
+      (s.trim() !== '' && Number.isFinite(Number(s)))
+    ) {
+      return "'" + s.replace(/'/g, "''") + "'";
+    }
+    return s;
+  }
+
   const toYaml = (obj, indent = 0) => {
     const padding = ' '.repeat(indent);
     return Object.entries(obj).reduce((result, [key, value]) => {
@@ -1156,9 +1175,9 @@ let mihomoImportModuleApi = null;
         return nested.trim() ? result + `${padding}${key}:\n${nested}` : result;
       }
       const rendered =
-        key === 'name'
-          ? `'${String(value).replace(/'/g, "''")}'`
-          : (key === 'encryption' && value === '' ? '""' : value);
+        key === 'encryption' && value === ''
+          ? '""'
+          : (typeof value === 'string' || YAML_STRING_VALUE_KEYS.has(key) ? yamlStringScalar(value) : value);
       return result + `${padding}${key}: ${rendered}\n`;
     }, '');
   };
@@ -1588,9 +1607,10 @@ let mihomoImportModuleApi = null;
       if (tls.allowInsecure) common['skip-cert-verify'] = true;
 
       if (streamSettings.security === 'reality') {
+        const shortId = reality.shortId;
         common['reality-opts'] = {
           'public-key': reality.publicKey,
-          'short-id': reality.shortId,
+          'short-id': shortId == null ? undefined : String(shortId),
           'support-x25519mlkem768': true,
         };
       }

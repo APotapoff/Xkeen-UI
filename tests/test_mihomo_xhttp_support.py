@@ -172,3 +172,11 @@ def test_frontend_mihomo_import_skips_empty_grpc_opts_objects():
 
     assert "const nested = toYaml(value, indent + 2);" in src
     assert "if (grpcServiceName) common['grpc-opts']" in src
+
+
+def test_frontend_mihomo_import_keeps_reality_short_id_as_yaml_string():
+    src = (ROOT / "xkeen-ui/static/js/features/mihomo_import.js").read_text(encoding="utf-8")
+
+    assert "const YAML_STRING_VALUE_KEYS = new Set(['short-id']);" in src
+    assert "Number.isFinite(Number(s))" in src
+    assert "'short-id': shortId == null ? undefined : String(shortId)" in src
