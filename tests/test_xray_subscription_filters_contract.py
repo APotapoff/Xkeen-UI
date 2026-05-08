@@ -77,6 +77,12 @@ def test_outbounds_card_exposes_current_proxy_nodes_and_ping_controls():
     assert 'id="outbounds-nodes-list"' in template_src
     assert "OUTBOUND_NODE_IDS" in outbounds_src
     assert "function refreshOutboundsNodes(visible, opts) {" in outbounds_src
+    assert "if (isSubscriptionFragmentMode()) {\n        outboundsSetNodes([], {});" not in outbounds_src
+    assert "const isSubscription = isSubscriptionFragmentMode();" in outbounds_src
+    assert "summaryEl.innerHTML = '';" in outbounds_src
+    assert "summaryEl.classList.add('hidden');" in outbounds_src
+    assert "const stateLabel = isSubscription ? '\\u0432\\u043a\\u043b\\u044e\\u0447\\u0451\\u043d' : (tag || 'proxy');" in outbounds_src
+    assert "\\u041f\\u043e\\u0434\\u043f\\u0438\\u0441\\u043e\\u0447\\u043d\\u044b\\u0439 generated-\\u0444\\u0440\\u0430\\u0433\\u043c\\u0435\\u043d\\u0442" in outbounds_src
     assert "function outboundsProbeNode(nodeKey) {" in outbounds_src
     assert "function outboundsProbeAllNodes() {" in outbounds_src
     assert "/api/xray/outbounds/nodes" in outbounds_src
@@ -87,6 +93,9 @@ def test_outbounds_card_exposes_current_proxy_nodes_and_ping_controls():
     assert ".xk-outbounds-node-panel {\n  flex: 1 1 auto;" in styles_src
     assert ".xk-outbounds-node-panel {\n  flex: 1 1 auto;\n  margin: 10px 0 12px;\n  overflow: hidden;" in styles_src
     assert ".xk-outbounds-node-list {\n  grid-template-columns: 1fr;\n  gap: 8px;\n  min-height: 0;\n  max-height: min(36vh, 320px);\n  overflow: auto;" in styles_src
+    assert "#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item {" in styles_src
+    assert "-webkit-line-clamp: 2;" in styles_src
+    assert "#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-side {\n  min-width: 54px;" in styles_src
 
 
 def test_outbounds_pool_nodes_relayout_after_card_open_and_async_load():

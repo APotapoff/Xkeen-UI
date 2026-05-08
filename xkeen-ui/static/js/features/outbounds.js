@@ -418,6 +418,15 @@ let outboundsModuleApi = null;
         }
         try { renderParsePreview({ ok: false, scheme: '', fields: {}, errors: [], warnings: [] }); } catch (e) {}
         const isPool = normalizedMode === 'pool';
+        if (normalizedMode === 'subscription') {
+          try {
+            if (summaryEl) {
+              summaryEl.innerHTML = '';
+              summaryEl.classList.add('hidden');
+            }
+          } catch (e2) {}
+          return;
+        }
         renderOutboundsFragmentSummary(fileName, summary, {
           title: isPool ? 'Пул прокси' : 'Сгенерированный фрагмент подписки',
           emptyMeta: isPool ? 'outbounds пула' : 'outbounds подписки',
@@ -576,11 +585,6 @@ let outboundsModuleApi = null;
     async function refreshOutboundsNodes(visible, opts) {
       const requestSeq = ++_outboundsNodesLoadSeq;
       const requestFragment = String((opts && opts.fragment) != null ? opts.fragment : getActiveFragment() || '').trim();
-      if (isSubscriptionFragmentMode()) {
-        outboundsSetNodes([], {});
-        outboundsSetNodesVisible(false);
-        return false;
-      }
       try {
         const res = await fetch(outboundsNodesApiUrl('', requestFragment), { cache: 'no-store' });
         const data = await res.json().catch(() => ({}));
@@ -632,6 +636,7 @@ let outboundsModuleApi = null;
       if (!panel || !caption || !summary || !listEl || !empty) return;
 
       const nodes = Array.isArray(_outboundsNodes) ? _outboundsNodes : [];
+      const isSubscription = isSubscriptionFragmentMode();
       const rows = [];
       nodes.forEach((node) => {
         const keyText = String(node && node.key ? node.key : '').trim();
@@ -639,6 +644,7 @@ let outboundsModuleApi = null;
         const key = escapeHtml(keyText);
         const name = escapeHtml(String(node && node.name ? node.name : tagText || 'proxy'));
         const tag = escapeHtml(tagText);
+        const stateLabel = isSubscription ? '\u0432\u043a\u043b\u044e\u0447\u0451\u043d' : (tag || 'proxy');
         const protocol = escapeHtml(String(node && node.protocol ? node.protocol : ''));
         const transport = escapeHtml(String(node && node.transport ? node.transport : ''));
         const security = escapeHtml(String(node && node.security ? node.security : ''));
@@ -666,7 +672,7 @@ let outboundsModuleApi = null;
             </div>
             <div class="xk-sub-node-side">
               <div class="xk-sub-node-latency ${latencyClass}" data-tooltip="${latencyTooltip}">${latencyLabel}</div>
-              <div class="xk-sub-node-state is-enabled">${tag || 'proxy'}</div>
+              <div class="xk-sub-node-state is-enabled">${stateLabel}</div>
               <div class="xk-sub-node-actions">
                 <button type="button" class="btn-secondary btn-compact xk-sub-node-ping xk-outbounds-node-ping ${pingBusy ? 'is-busy' : ''}" data-node-key="${key}" title="Проверить задержку" data-tooltip="${escapeHtml(canPing ? 'Проверить задержку этого proxy-узла.' : 'Узел нельзя проверить: не найден tag.')}" aria-label="Проверить задержку" ${canPing ? '' : 'disabled'}>
                   <span class="xk-sub-icon-glyph" aria-hidden="true">⏱</span>
@@ -685,6 +691,12 @@ let outboundsModuleApi = null;
       empty.style.display = rows.length ? 'none' : 'block';
       empty.textContent = 'Proxy-узлы не найдены.';
       outboundsSetNodesVisible(nodes.length > 0);
+      if (isSubscription) {
+        caption.textContent = nodes.length === 1
+          ? '\u041e\u0434\u0438\u043d proxy-\u0443\u0437\u0435\u043b \u0438\u0437 \u043f\u043e\u0434\u043f\u0438\u0441\u043e\u0447\u043d\u043e\u0433\u043e generated-\u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442\u0430.'
+          : (nodes.length > 1 ? `\u041f\u043e\u0434\u043f\u0438\u0441\u043e\u0447\u043d\u044b\u0439 generated-\u0444\u0440\u0430\u0433\u043c\u0435\u043d\u0442: ${nodes.length} proxy-\u0443\u0437\u043b\u043e\u0432.` : 'Proxy-\u0443\u0437\u043b\u044b \u043f\u043e\u0434\u043f\u0438\u0441\u043a\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b.');
+        empty.textContent = 'Proxy-\u0443\u0437\u043b\u044b \u043f\u043e\u0434\u043f\u0438\u0441\u043a\u0438 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b.';
+      }
       outboundsUpdatePingAllBtnState();
 
       Array.from(listEl.querySelectorAll('.xk-outbounds-node-ping')).forEach((btn) => {
@@ -1935,7 +1947,7 @@ let outboundsModuleApi = null;
         if (isSubscriptionFragment) {
           _savedUrl = '';
           setSubscriptionFragmentMode(true, fileName, summary);
-          try { await refreshOutboundsNodes(false, { fragment: requestFragment }); } catch (e) {}
+          try { await refreshOutboundsNodes(true, { fragment: requestFragment }); } catch (e) {}
           try { syncDirtyState(false); } catch (e) {}
           publishLifecycleState({
             savedValue: '',

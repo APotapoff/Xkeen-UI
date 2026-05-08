@@ -9429,6 +9429,83 @@ html[data-theme="light"] .xk-sub-draft-badge {
   border-radius: 10px;
 }
 
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-panel {
+  margin-top: 0;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-list {
+  gap: 6px;
+  max-height: min(38vh, 360px);
+  padding: 6px;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item {
+  min-height: 0;
+  gap: 8px;
+  padding: 8px 9px;
+  border-radius: 10px;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-main {
+  gap: 4px;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: calc(12.5px * var(--xk-font-scale));
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-meta {
+  gap: 4px;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-pill {
+  min-height: 18px;
+  padding: 0 6px;
+  font-size: calc(10px * var(--xk-font-scale));
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-endpoint,
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-detail {
+  font-size: calc(11px * var(--xk-font-scale));
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-side {
+  min-width: 54px;
+  gap: 4px;
+  padding-top: 0;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-latency {
+  min-width: 50px;
+  min-height: 18px;
+  padding: 0 6px;
+  font-size: calc(10px * var(--xk-font-scale));
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-state {
+  font-size: calc(10px * var(--xk-font-scale));
+  line-height: 1.1;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-actions {
+  gap: 4px;
+}
+
+#outbounds-body.xk-outbounds-subscription-fragment .xk-outbounds-node-item .xk-sub-node-ping.btn-compact {
+  width: 24px;
+  height: 24px;
+}
+
 .xk-sub-node-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
