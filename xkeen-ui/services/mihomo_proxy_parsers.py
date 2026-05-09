@@ -118,6 +118,26 @@ def _mapping_bool(mapping: Any, *keys: str) -> Optional[bool]:
     return None
 
 
+def _normalize_mihomo_vless_flow(value: Any) -> str:
+    flow = str(value or "").strip()
+    if not flow:
+        return ""
+    if flow == "xtls-rprx-vision" or flow.startswith("xtls-rprx-vision-"):
+        return "xtls-rprx-vision"
+    return flow
+
+
+def _query_first(mapping: Dict[str, str], *keys: str) -> str:
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, ""):
+            try:
+                return unquote(str(value))
+            except Exception:
+                return str(value)
+    return ""
+
+
 def _sanitize_headers(value: Any) -> Optional[Dict[str, Any]]:
     if not isinstance(value, dict):
         return None
@@ -412,6 +432,7 @@ def parse_vless(link: str, custom_name: Optional[str] = None) -> ProxyParseResul
                 flow = unquote(flow_q)
             except Exception:
                 flow = flow_q
+    flow = _normalize_mihomo_vless_flow(flow)
 
     name = custom_name or qs.get("remarks") or qs.get("remark") or comment_name.strip() or server
 
@@ -467,10 +488,12 @@ def parse_vless(link: str, custom_name: Optional[str] = None) -> ProxyParseResul
         if allow_insecure:
             yaml_lines.append("  skip-cert-verify: true")
         yaml_lines.append("  reality-opts:")
-        if "pbk" in qs:
-            yaml_lines.append(f"    public-key: {_yaml_str(qs['pbk'])}")
-        if "sid" in qs:
-            yaml_lines.append(f"    short-id: {_yaml_str(qs['sid'])}")
+        public_key = _query_first(qs, "pbk", "publicKey", "public-key", "public_key")
+        short_id = _query_first(qs, "sid", "shortId", "short-id", "short_id", "shortid")
+        if public_key:
+            yaml_lines.append(f"    public-key: {_yaml_str(public_key)}")
+        if short_id:
+            yaml_lines.append(f"    short-id: {_yaml_str(short_id)}")
         yaml_lines.append("    support-x25519mlkem768: true")
         if spx:
             yaml_lines.append(f"    spider-x: {_yaml_str(spx)}")

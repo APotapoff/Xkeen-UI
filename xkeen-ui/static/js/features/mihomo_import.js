@@ -1188,6 +1188,13 @@ let mihomoImportModuleApi = null;
     return String(value);
   };
 
+  const normalizeMihomoVlessFlow = (value) => {
+    const flow = String(value || '').trim();
+    if (!flow) return undefined;
+    if (flow === 'xtls-rprx-vision' || flow.startsWith('xtls-rprx-vision-')) return 'xtls-rprx-vision';
+    return flow;
+  };
+
   const parseJsonMaybe = (raw) => {
     if (raw == null || raw === '') return undefined;
     if (typeof raw === 'object') return raw;
@@ -1203,6 +1210,11 @@ let mihomoImportModuleApi = null;
       if (value !== undefined && value !== null && value !== '') return value;
     }
     return undefined;
+  };
+
+  const realityParam = (params, ...keys) => {
+    const value = firstDefined(params, ...keys);
+    return value === undefined ? undefined : decodeMaybe(value);
   };
 
   const boolMaybe = (obj, ...keys) => {
@@ -1402,8 +1414,8 @@ let mihomoImportModuleApi = null;
           ? {
               fingerprint: string(params.fp) || 'chrome',
               serverName: string(params.sni),
-              publicKey: string(params.pbk),
-              shortId: string(params.sid),
+              publicKey: realityParam(params, 'pbk', 'publicKey', 'public-key', 'public_key'),
+              shortId: realityParam(params, 'sid', 'shortId', 'short-id', 'short_id', 'shortid'),
               spiderX: string(params.spx),
               mldsa65Verify: string(params.pqv),
             }
@@ -1462,7 +1474,7 @@ let mihomoImportModuleApi = null;
         port: +url.port || 443,
         id: url.username,
         encryption: params.encryption || 'none',
-        flow: params.flow || undefined,
+        flow: normalizeMihomoVlessFlow(params.flow),
       })),
 
     trojan: (uri) =>
@@ -1563,7 +1575,7 @@ let mihomoImportModuleApi = null;
       const enc = String(settings.encryption || '').trim().toLowerCase();
       Object.assign(common, {
         uuid: settings.id,
-        flow: settings.flow,
+        flow: normalizeMihomoVlessFlow(settings.flow),
         'packet-encoding': 'xudp',
         encryption: !enc || enc === 'none' ? '' : settings.encryption,
       });

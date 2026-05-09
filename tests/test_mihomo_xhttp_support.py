@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
+import yaml
 
 from services.mihomo_proxy_parsers import parse_trojan, parse_vless
 
@@ -28,6 +29,54 @@ def test_parse_vless_supports_xhttp_transport_for_mihomo():
     assert "host: cdn.example.com" in result.yaml
     assert "mode: stream-up" in result.yaml
     assert "servername: edge.example.com" in result.yaml
+
+
+def test_parse_vless_normalizes_vision_udp443_flow_for_mihomo_schema():
+    link = (
+        "vless://f3131569-259f-4c4e-8fd9-67daf2212223@umarwelder.xyz:443"
+        "?type=tcp&encryption=none&security=reality"
+        "&pbk=jh-iF7JCrGyiGair7VCnOzFBba6VBlT_a0-jtMXBjyE"
+        "&fp=chrome&sni=bahn.de&sid=ff5f69637fd16f&spx=%2F"
+        "&flow=xtls-rprx-vision-udp443#senko-umar"
+    )
+
+    result = parse_vless(link)
+
+    assert result.name == "senko-umar"
+    assert "flow: xtls-rprx-vision\n" in result.yaml
+    assert "xtls-rprx-vision-udp443" not in result.yaml
+    assert "packet-encoding: xudp" in result.yaml
+    assert "support-x25519mlkem768: true" in result.yaml
+
+
+@pytest.mark.parametrize("sid_key", ["sid", "shortId", "short-id", "short_id", "shortid"])
+def test_parse_vless_quotes_numeric_short_id_and_accepts_aliases(sid_key):
+    link = (
+        "vless://11111111-1111-1111-1111-111111111111@example.com:443"
+        f"?type=tcp&security=reality&pbk=pubkey&{sid_key}=46&sni=www.yandex.ru"
+        "&encryption=none#numeric-short-id"
+    )
+
+    result = parse_vless(link)
+    parsed = yaml.safe_load(result.yaml)[0]
+
+    assert "short-id: '46'" in result.yaml
+    assert parsed["reality-opts"]["short-id"] == "46"
+    assert isinstance(parsed["reality-opts"]["short-id"], str)
+
+
+def test_parse_vless_preserves_alphanumeric_short_id_alias():
+    link = (
+        "vless://11111111-1111-1111-1111-111111111111@example.com:443"
+        "?type=tcp&security=reality&publicKey=pubkey&shortId=46ab9f&sni=www.yandex.ru"
+        "&encryption=none#alpha-short-id"
+    )
+
+    result = parse_vless(link)
+    parsed = yaml.safe_load(result.yaml)[0]
+
+    assert parsed["reality-opts"]["public-key"] == "pubkey"
+    assert parsed["reality-opts"]["short-id"] == "46ab9f"
 
 
 def test_parse_vless_xhttp_preserves_reuse_settings_and_extra_opts():
@@ -180,3 +229,20 @@ def test_frontend_mihomo_import_keeps_reality_short_id_as_yaml_string():
     assert "const YAML_STRING_VALUE_KEYS = new Set(['short-id']);" in src
     assert "Number.isFinite(Number(s))" in src
     assert "'short-id': shortId == null ? undefined : String(shortId)" in src
+
+
+def test_frontend_mihomo_import_normalizes_vision_flow_suffixes():
+    src = (ROOT / "xkeen-ui/static/js/features/mihomo_import.js").read_text(encoding="utf-8")
+
+    assert "const normalizeMihomoVlessFlow = (value) => {" in src
+    assert "flow.startsWith('xtls-rprx-vision-')" in src
+    assert "flow: normalizeMihomoVlessFlow(params.flow)" in src
+    assert "flow: normalizeMihomoVlessFlow(settings.flow)" in src
+
+
+def test_frontend_mihomo_import_reads_reality_short_id_aliases():
+    src = (ROOT / "xkeen-ui/static/js/features/mihomo_import.js").read_text(encoding="utf-8")
+
+    assert "const realityParam = (params, ...keys) => {" in src
+    assert "realityParam(params, 'sid', 'shortId', 'short-id', 'short_id', 'shortid')" in src
+    assert "realityParam(params, 'pbk', 'publicKey', 'public-key', 'public_key')" in src
