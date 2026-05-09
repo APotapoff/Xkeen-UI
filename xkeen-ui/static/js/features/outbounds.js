@@ -615,16 +615,21 @@ let outboundsModuleApi = null;
       if (!btn) return;
       const nodes = Array.isArray(_outboundsNodes) ? _outboundsNodes : [];
       const hasPingable = nodes.some((node) => node && node.key && node.tag);
-      const tooltip = _outboundsPingAllBusy
+      const busy = !!_outboundsPingAllBusy;
+      const tooltip = busy
         ? 'Идёт проверка задержки всех proxy-узлов.'
         : (hasPingable
           ? 'Проверить задержку всех proxy-узлов в текущем 04_outbounds-фрагменте.'
           : 'В текущем outbounds-фрагменте нет proxy-узлов для проверки.');
       btn.setAttribute('data-tooltip', tooltip);
       btn.setAttribute('title', tooltip);
-      btn.setAttribute('aria-label', hasPingable ? 'Пинг всех proxy-узлов' : 'Пинг всех proxy-узлов недоступен');
-      btn.disabled = _outboundsPingAllBusy || !hasPingable;
-      btn.classList.toggle('is-busy', !!_outboundsPingAllBusy);
+      btn.setAttribute('aria-label', busy
+        ? 'Идёт проверка задержки всех proxy-узлов'
+        : (hasPingable ? 'Пинг всех proxy-узлов' : 'Пинг всех proxy-узлов недоступен'));
+      btn.disabled = busy || !hasPingable;
+      btn.classList.toggle('is-busy', busy);
+      if (busy) btn.setAttribute('aria-busy', 'true');
+      else btn.removeAttribute('aria-busy');
     }
 
     function outboundsRenderNodeList() {

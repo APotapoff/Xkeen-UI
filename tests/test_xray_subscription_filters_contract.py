@@ -74,6 +74,9 @@ def test_outbounds_card_exposes_current_proxy_nodes_and_ping_controls():
 
     assert 'id="outbounds-nodes-panel"' in template_src
     assert 'id="outbounds-nodes-pingall"' in template_src
+    assert '<span class="xk-sub-icon-glyph xk-sub-pingall-glyph" aria-hidden="true">⏱</span>' in template_src
+    assert '<span class="xk-sub-pingall-spinner" aria-hidden="true"></span>' in template_src
+    assert '<span class="xk-visually-hidden">Проверить задержку всех proxy-узлов</span>' in template_src
     assert 'id="outbounds-nodes-list"' in template_src
     assert "OUTBOUND_NODE_IDS" in outbounds_src
     assert "function refreshOutboundsNodes(visible, opts) {" in outbounds_src
@@ -85,6 +88,10 @@ def test_outbounds_card_exposes_current_proxy_nodes_and_ping_controls():
     assert "\\u041f\\u043e\\u0434\\u043f\\u0438\\u0441\\u043e\\u0447\\u043d\\u044b\\u0439 generated-\\u0444\\u0440\\u0430\\u0433\\u043c\\u0435\\u043d\\u0442" in outbounds_src
     assert "function outboundsProbeNode(nodeKey) {" in outbounds_src
     assert "function outboundsProbeAllNodes() {" in outbounds_src
+    assert "const busy = !!_outboundsPingAllBusy;" in outbounds_src
+    assert "btn.classList.toggle('is-busy', busy);" in outbounds_src
+    assert "if (busy) btn.setAttribute('aria-busy', 'true');" in outbounds_src
+    assert "else btn.removeAttribute('aria-busy');" in outbounds_src
     assert "/api/xray/outbounds/nodes" in outbounds_src
     assert "/api/xray/outbounds/nodes/ping" in routes_src
     assert "/api/xray/outbounds/nodes/ping-bulk" in routes_src
