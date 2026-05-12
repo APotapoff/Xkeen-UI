@@ -156,6 +156,43 @@ def test_hwid_subscription_template_completion_suggests_rule_provider_format_enu
     assert "mrs" in result["labels"]
 
 
+def test_proxy_provider_header_completion_suggests_hwid_headers():
+    result = _run_completion(
+        "\n".join([
+            "proxy-providers:",
+            "  premium:",
+            "    type: http",
+            "    url: https://sub.example.com/clash",
+            "    header:",
+            "      x-__CURSOR__",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["context"]["kind"] == "key"
+    assert "x-hwid" in result["labels"]
+    assert "x-device-os" in result["labels"]
+    assert "x-ver-os" in result["labels"]
+    assert "x-device-model" in result["labels"]
+
+    result = _run_completion(
+        "\n".join([
+            "proxy-providers:",
+            "  premium:",
+            "    type: http",
+            "    url: https://sub.example.com/clash",
+            "    header:",
+            "      User-__CURSOR__",
+            "",
+        ])
+    )
+
+    assert result is not None
+    assert result["context"]["kind"] == "key"
+    assert "User-Agent" in result["labels"]
+
+
 def test_proxy_network_completion_suggests_xhttp_transport():
     result = _run_completion(
         "\n".join([

@@ -21184,6 +21184,20 @@ html[data-theme="light"] .routing-rule-grid.is-dnd-live .routing-rule-handle {
   line-height: 1.42;
 }
 
+.xk-hw-preview-cm,
+.xk-hw-preview-wrap .CodeMirror,
+.xk-hw-preview-wrap .xkeen-cm6-host {
+  min-height: 356px;
+  height: 356px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.xk-hw-preview-wrap .xkeen-cm6-editor {
+  height: 100%;
+}
+
 .xk-hw-footer {
   display: flex;
   align-items: center;
@@ -21261,6 +21275,13 @@ html[data-theme="light"] .routing-rule-grid.is-dnd-live .routing-rule-handle {
   }
 
   .xk-hw-preview {
+    min-height: 280px;
+    height: 280px;
+  }
+
+  .xk-hw-preview-cm,
+  .xk-hw-preview-wrap .CodeMirror,
+  .xk-hw-preview-wrap .xkeen-cm6-host {
     min-height: 280px;
     height: 280px;
   }

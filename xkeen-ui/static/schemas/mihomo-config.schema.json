@@ -1353,7 +1353,55 @@
         },
         "header": {
           "type": "object",
-          "description": "Дополнительные HTTP-заголовки для подписки (например, User-Agent для обхода UA-фильтра)."
+          "description": "Дополнительные HTTP-заголовки для подписки (например, HWID/User-Agent для premium-подписок). Значения Mihomo обычно задаёт строкой или списком строк.",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          },
+          "properties": {
+            "x-hwid": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ],
+              "description": "HWID устройства для подписок, привязанных к роутеру/устройству.",
+              "examples": ["F85E3CEE1A15"]
+            },
+            "x-device-os": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ],
+              "description": "Операционная система устройства, которую ожидает сервер подписки.",
+              "examples": ["Keenetic OS"]
+            },
+            "x-ver-os": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ],
+              "description": "Версия операционной системы устройства.",
+              "examples": ["5.0.3"]
+            },
+            "x-device-model": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ],
+              "description": "Модель устройства для HWID-подписки.",
+              "examples": ["Z8102AX · KN-3812"]
+            },
+            "User-Agent": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ],
+              "description": "User-Agent, который будет отправляться при загрузке подписки.",
+              "examples": ["mihomo/v26.2"]
+            }
+          }
         },
         "health-check": {
           "type": "object",

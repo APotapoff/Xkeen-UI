@@ -291,6 +291,34 @@ def test_mihomo_yaml_schema_runtime_requires_provider_url_for_http_proxy_provide
     assert any(str(item["path"]) == "proxy-providers.sample" for item in result["diagnostics"])
 
 
+def test_mihomo_yaml_schema_runtime_accepts_hwid_proxy_provider_headers():
+    result = _run_mihomo_yaml_schema(
+        "\n".join([
+            "proxy-providers:",
+            "  premium:",
+            "    type: http",
+            "    url: https://sub.example.com/clash",
+            "    interval: 3600",
+            "    header:",
+            "      x-hwid:",
+            "      - F85E3CEE1A15",
+            "      x-device-os:",
+            "      - Keenetic OS",
+            "      x-ver-os:",
+            "      - 5.0.3",
+            "      x-device-model:",
+            "      - Z8102AX",
+            "      User-Agent:",
+            "      - mihomo/v26.2",
+            "",
+        ])
+    )
+
+    assert result["ok"] is True
+    assert result["parseOk"] is True
+    assert result["diagnostics"] == []
+
+
 def test_mihomo_yaml_schema_runtime_requires_url_for_url_test_group():
     result = _run_mihomo_yaml_schema(
         "\n".join([

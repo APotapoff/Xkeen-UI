@@ -103,6 +103,10 @@ def test_mihomo_menu_feature_flows_keep_editor_patch_integrations_and_single_sav
             "setEditorText(next);",
             "refreshEditor();",
             "const r = await postJSONAllowError('/api/mihomo/hwid/apply', {",
+            "getMihomoEditorEngineApi,",
+            "async function ensurePreviewEditor()",
+            "mode: 'yaml'",
+            "readOnly: 'nocursor'",
         ],
     }
 

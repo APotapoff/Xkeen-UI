@@ -3,6 +3,7 @@ import { getMihomoYamlPatchApi } from './mihomo_yaml_patch.js';
 import {
   getMihomoCommandJobApi,
   getMihomoCoreHttpApi,
+  getMihomoEditorEngineApi,
   refreshSharedMihomoEditor,
   syncMihomoModalBodyScrollLock,
 } from './mihomo_runtime.js';
@@ -52,6 +53,12 @@ let mihomoHwidSubModuleApi = null;
   let _device = null; // device info from /api/mihomo/hwid/device
   let _lastProbe = null; // probe response
   let _busy = false;
+  let _previewCm = null;
+  let _previewFacade = null;
+  let _previewLastText = '';
+  let _previewLayoutRaf = 0;
+
+  const CM6_SCOPE = 'mihomo-hwid-preview';
 
   function $(id) {
     return document.getElementById(id);
@@ -97,10 +104,187 @@ let mihomoHwidSubModuleApi = null;
     toggleBlock(el, !!s);
   }
 
+  function cmThemeFromPage() {
+    const t = document.documentElement.getAttribute('data-theme');
+    return t === 'light' ? 'default' : 'material-darker';
+  }
+
+  function withCm6Scope(opts) {
+    return Object.assign({ cm6Scope: CM6_SCOPE, scope: CM6_SCOPE }, opts || {});
+  }
+
+  function getEngineHelper() {
+    return getMihomoEditorEngineApi();
+  }
+
+  function getEditorRuntime(engine, opts) {
+    const helper = getEngineHelper();
+    if (!helper || typeof helper.getRuntime !== 'function') return null;
+    try { return helper.getRuntime(engine, withCm6Scope(opts)); } catch (e) {}
+    return null;
+  }
+
+  async function ensureEditorRuntime(engine, opts) {
+    const helper = getEngineHelper();
+    if (!helper) return null;
+    try {
+      if (typeof helper.ensureRuntime === 'function') return await helper.ensureRuntime(engine, withCm6Scope(opts));
+      if (typeof helper.getRuntime === 'function') return helper.getRuntime(engine, withCm6Scope(opts));
+    } catch (e) {}
+    return null;
+  }
+
+  function createCodeMirrorFacade(cm) {
+    if (!cm) return null;
+    const runtime = getEditorRuntime('codemirror');
+    if (runtime && typeof runtime.toFacade === 'function') {
+      try {
+        return runtime.toFacade(cm, {
+          layout: () => {
+            try { if (cm.layout) cm.layout(); else if (cm.refresh) cm.refresh(); } catch (e) {}
+          },
+        });
+      } catch (e) {}
+    }
+    const helper = getEngineHelper();
+    if (!helper || typeof helper.fromCodeMirror !== 'function') return null;
+    try {
+      return helper.fromCodeMirror(cm, {
+        layout: () => {
+          try { if (cm.layout) cm.layout(); else if (cm.refresh) cm.refresh(); } catch (e) {}
+        },
+      });
+    } catch (e) {}
+    return null;
+  }
+
+  function layoutPreviewEditor() {
+    try {
+      if (_previewLayoutRaf) return;
+      _previewLayoutRaf = requestAnimationFrame(() => {
+        _previewLayoutRaf = 0;
+        try {
+          if (_previewCm) {
+            if (typeof _previewCm.setSize === 'function') _previewCm.setSize(null, '100%');
+            if (typeof _previewCm.refresh === 'function') _previewCm.refresh();
+            else if (typeof _previewCm.layout === 'function') _previewCm.layout();
+          }
+        } catch (e1) {}
+        try {
+          if (_previewFacade && typeof _previewFacade.layout === 'function') _previewFacade.layout();
+        } catch (e2) {}
+      });
+    } catch (e) {
+      try { if (_previewCm && typeof _previewCm.refresh === 'function') _previewCm.refresh(); } catch (e2) {}
+    }
+  }
+
+  async function ensurePreviewEditor() {
+    const ta = $(IDS.preview);
+    if (!ta) return null;
+
+    if (_previewCm) {
+      try {
+        if (_previewCm.setOption) _previewCm.setOption('theme', cmThemeFromPage());
+      } catch (e) {}
+      layoutPreviewEditor();
+      return _previewCm;
+    }
+
+    let runtime = null;
+    try {
+      runtime = await ensureEditorRuntime('codemirror', { mode: 'yaml' });
+      if (runtime && typeof runtime.ensureAssets === 'function') {
+        await runtime.ensureAssets({ mode: 'yaml' });
+      }
+    } catch (e) {
+      runtime = getEditorRuntime('codemirror', { mode: 'yaml' });
+    }
+    if (!runtime || typeof runtime.create !== 'function') return null;
+
+    _previewCm = runtime.create(ta, {
+      mode: 'yaml',
+      theme: cmThemeFromPage(),
+      lineNumbers: false,
+      lineWrapping: true,
+      readOnly: 'nocursor',
+      tabSize: 2,
+      indentUnit: 2,
+      viewportMargin: Infinity,
+    });
+
+    try {
+      const w = _previewCm && typeof _previewCm.getWrapperElement === 'function'
+        ? _previewCm.getWrapperElement()
+        : null;
+      if (w) w.classList.add('xkeen-cm', 'xk-hw-preview-cm');
+      if (_previewCm && typeof _previewCm.setSize === 'function') _previewCm.setSize(null, '100%');
+      else if (w) w.style.height = '100%';
+    } catch (e) {}
+
+    _previewFacade = createCodeMirrorFacade(_previewCm);
+    setPreview(_previewLastText);
+    layoutPreviewEditor();
+    return _previewCm;
+  }
+
+  function schedulePreviewEditor() {
+    try {
+      Promise.resolve(ensurePreviewEditor()).catch(() => null);
+    } catch (e) {}
+  }
+
+  function bindPreviewLayoutHooks() {
+    const modal = $(IDS.modal);
+    if (!modal || (modal.dataset && modal.dataset.xkHwPreviewLayoutBound === '1')) return;
+    try {
+      const content = modal.querySelector ? modal.querySelector('.modal-content') : null;
+      if (content && typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => {
+          if (modalOpen()) layoutPreviewEditor();
+        });
+        ro.observe(content);
+      }
+    } catch (e) {}
+    try {
+      window.addEventListener('resize', () => {
+        if (modalOpen()) layoutPreviewEditor();
+      });
+    } catch (e2) {}
+    try {
+      document.addEventListener('xkeen-theme-change', () => {
+        try { if (_previewCm && _previewCm.setOption) _previewCm.setOption('theme', cmThemeFromPage()); } catch (e3) {}
+        if (modalOpen()) layoutPreviewEditor();
+      });
+    } catch (e4) {}
+    if (modal.dataset) modal.dataset.xkHwPreviewLayoutBound = '1';
+  }
+
   function setPreview(text) {
+    const v = String(text || '');
+    _previewLastText = v;
+    try {
+      if (_previewFacade && typeof _previewFacade.setValue === 'function') {
+        _previewFacade.setValue(v);
+        try { _previewFacade.scrollTo(0, 0); } catch (e2) {}
+        return;
+      }
+      if (_previewFacade && typeof _previewFacade.set === 'function') {
+        _previewFacade.set(v);
+        try { _previewFacade.scrollTo(0, 0); } catch (e3) {}
+        return;
+      }
+    } catch (e) {}
+    try {
+      if (_previewCm && typeof _previewCm.setValue === 'function') {
+        _previewCm.setValue(v);
+        try { _previewCm.scrollTo(0, 0); } catch (e4) {}
+        return;
+      }
+    } catch (e5) {}
     const ta = $(IDS.preview);
     if (!ta) return;
-    try { ta.value = String(text || ''); } catch (e) {}
+    try { ta.value = v; } catch (e) {}
   }
 
   function setInsertEnabled(on) {
@@ -244,6 +428,11 @@ let mihomoHwidSubModuleApi = null;
         const inp = $(IDS.url);
         if (inp) inp.focus();
       } catch (e4) {}
+
+      try {
+        bindPreviewLayoutHooks();
+        schedulePreviewEditor();
+      } catch (e5) {}
     }
   }
 
