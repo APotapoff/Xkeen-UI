@@ -26,6 +26,10 @@ def test_restart_log_formats_subscription_refresh_entries_and_polls_for_updates(
     assert "fetchPreflightPayload" in restart_log_src
     assert "/api/operation-diagnostics/" in restart_log_src
     assert "data-xk-restart-log-filter" in restart_log_src
+    assert "data-xk-restart-log-search" in restart_log_src
+    assert "data-xk-restart-log-token" in restart_log_src
+    assert "data-xk-restart-log-bottom" in restart_log_src
+    assert "data-xk-restart-log-action=\"fullscreen\"" in restart_log_src
     assert "data-xk-restart-log-detail-toggle" in restart_log_src
     render_all_src = restart_log_src.split("function renderAll()", 1)[1].split("function ensurePolling()", 1)[0]
     assert "bindLogInteractions();" in render_all_src
@@ -46,6 +50,8 @@ def test_restart_log_formats_subscription_refresh_entries_and_polls_for_updates(
     assert "restart-log-pill-preflight" in styles_src
     assert "restart-log-preflight-open" in styles_src
     assert "restart-log-filter-btn" in styles_src
+    assert "restart-log-search-input" in styles_src
+    assert "restart-log-bottom-btn" in styles_src
     assert "restart-log-level-info" in styles_src
     assert "restart-log-runtime-source" in styles_src
     assert "grid-template-columns: max-content max-content minmax(0, max-content);" in styles_src
@@ -119,6 +125,23 @@ def test_restart_log_renders_summary_above_block():
     assert ".restart-log-summary" in styles_src
     assert ".restart-log-summary-part-success" in styles_src
     assert ".restart-log-summary-part-error" in styles_src
+
+
+def test_restart_log_has_viewer_ux_without_xray_log_source_duplication():
+    restart_log_src = _read("xkeen-ui/static/js/features/restart_log.js")
+    panel_src = _read("xkeen-ui/templates/panel.html")
+    styles_src = _read("xkeen-ui/static/styles.css")
+
+    assert "function entryMatchesSearch(entry)" in restart_log_src
+    assert "RL.applyTokenFilter" in restart_log_src
+    assert "shouldAutoScrollRestartLog" in restart_log_src
+    assert "toggleRestartLogFullscreen" in restart_log_src
+    assert "xk-restart-log-card" in panel_src
+    assert ".log-card.xk-restart-log-card.is-fullscreen .log-block" in styles_src
+    assert ".log-card.xk-restart-log-card.is-fullscreen {" in styles_src
+    assert "z-index: 10100;" in styles_src
+    assert "isolation: isolate;" in styles_src
+    assert "error.log" not in restart_log_src.split("const RESTART_LOG_TITLE", 1)[1].split("const XRAY_TS_LINE_RE", 1)[0]
 
 
 def test_restart_log_subscribes_to_events_ws_for_instant_refresh():

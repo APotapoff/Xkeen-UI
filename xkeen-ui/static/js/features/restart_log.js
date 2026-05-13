@@ -1,5 +1,5 @@
 import { getXrayLogLineClass } from './xray_log_line_class.js';
-import { ansiToXkeenHtml, escapeXkeenHtml, getXkeenCommandJobApi, getXkeenUiApi, toastXkeen } from './xkeen_runtime.js';
+import { ansiToXkeenHtml, escapeXkeenHtml, getXkeenCommandJobApi, getXkeenUiApi, syncXkeenBodyScrollLock, toastXkeen } from './xkeen_runtime.js';
 
 let restartLogModuleApi = null;
 
@@ -14,7 +14,10 @@ let restartLogModuleApi = null;
   RL._hasBaseline = !!RL._hasBaseline;
   RL._pollTimer = RL._pollTimer || null;
   RL._filter = RL._filter === 'errors' ? 'errors' : 'all';
+  RL._query = typeof RL._query === 'string' ? RL._query : '';
   RL._preflightPayloads = RL._preflightPayloads instanceof Map ? RL._preflightPayloads : new Map();
+  RL._autoScrollByScope = RL._autoScrollByScope instanceof Map ? RL._autoScrollByScope : new Map();
+  RL._fullscreenCard = RL._fullscreenCard && RL._fullscreenCard.nodeType === 1 ? RL._fullscreenCard : null;
   let restartLogScopeSeq = 0;
 
   const RESTART_LOG_POLL_MS = 15000;
@@ -414,6 +417,43 @@ let restartLogModuleApi = null;
     });
   }
 
+  function normalizeRestartLogSearchQuery(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function buildRestartLogSearchText(entry) {
+    if (!entry) return '';
+    const parts = [entry.raw || ''];
+    const summary = entry.summary || null;
+    if (summary) {
+      parts.push(summary.source, summary.bucket, summary.label, summary.message, summary.rawSourceText);
+      const details = summary.details && typeof summary.details === 'object' ? summary.details : {};
+      Object.keys(details).forEach((key) => {
+        parts.push(key, formatRestartDetailValue(key, details[key]), String(details[key] == null ? '' : details[key]));
+      });
+    }
+    return parts.join(' ').toLowerCase();
+  }
+
+  function entryMatchesSearch(entry) {
+    const query = normalizeRestartLogSearchQuery(RL._query);
+    if (!query) return true;
+    const haystack = buildRestartLogSearchText(entry);
+    if (!haystack) return false;
+
+    const groups = query
+      .split('|')
+      .map((group) => group.trim())
+      .filter(Boolean);
+    if (!groups.length) return true;
+
+    return groups.some((group) => {
+      const terms = group.split(/\s+/).map((term) => term.trim().toLowerCase()).filter(Boolean);
+      if (!terms.length) return true;
+      return terms.every((term) => haystack.includes(term));
+    });
+  }
+
   function showSubscriptionRefreshToast(events) {
     const list = Array.isArray(events) ? events.filter(Boolean) : [];
     if (!list.length) return;
@@ -624,6 +664,64 @@ let restartLogModuleApi = null;
     return 'root';
   }
 
+  function isRestartLogAtBottom(el) {
+    if (!el) return true;
+    try {
+      return (el.scrollHeight - el.clientHeight) <= (el.scrollTop + 40);
+    } catch (error) {}
+    return true;
+  }
+
+  function isRestartLogScrollable(el) {
+    if (!el) return false;
+    try {
+      return el.scrollHeight > el.clientHeight + 4;
+    } catch (error) {}
+    return false;
+  }
+
+  function getRestartLogCard(el) {
+    try {
+      return el && typeof el.closest === 'function' ? el.closest('.log-card') : null;
+    } catch (error) {}
+    return null;
+  }
+
+  function shouldAutoScrollRestartLog(el) {
+    const scopeId = getRestartLogScopeId(el);
+    if (!RL._autoScrollByScope.has(scopeId)) return true;
+    return RL._autoScrollByScope.get(scopeId) !== false;
+  }
+
+  function updateRestartLogScrollButton(el) {
+    const card = getRestartLogCard(el);
+    if (!card) return;
+    const btn = card.querySelector('[data-xk-restart-log-bottom]');
+    if (!btn) return;
+    const show = isRestartLogScrollable(el) && !isRestartLogAtBottom(el);
+    btn.hidden = !show;
+  }
+
+  function scrollRestartLogToBottom(el) {
+    if (!el) return;
+    try {
+      el.scrollTop = el.scrollHeight;
+      RL._autoScrollByScope.set(getRestartLogScopeId(el), true);
+    } catch (error) {}
+    updateRestartLogScrollButton(el);
+  }
+
+  function updateRestartLogAutoScroll(el) {
+    if (!el) return;
+    const atBottom = isRestartLogAtBottom(el);
+    RL._autoScrollByScope.set(getRestartLogScopeId(el), atBottom);
+    updateRestartLogScrollButton(el);
+  }
+
+  function updateAllRestartLogScrollButtons() {
+    getLogEls().forEach((el) => updateRestartLogScrollButton(el));
+  }
+
   function buildRestartDetailRows(summary) {
     if (!summary) return [];
     const details = summary.details && typeof summary.details === 'object' ? summary.details : {};
@@ -692,7 +790,7 @@ let restartLogModuleApi = null;
       '<span class="restart-log-entry-wrap">',
       '<span class="restart-log-entry">',
       `<span class="log-ts restart-log-ts">${tsHtml}</span>`,
-      `<span class="restart-log-pill restart-log-pill-${bucket}">${labelHtml}</span>`,
+      `<button type="button" class="restart-log-pill restart-log-pill-${bucket} restart-log-token" data-xk-restart-log-token="${safeEscapeHtml(summary.source || summary.label || bucket)}" title="Фильтр: ${labelHtml}">${labelHtml}</button>`,
       `<span class="restart-log-message">${messageHtml}</span>`,
       rawSourceHtml ? `<span class="restart-log-meta">${rawSourceHtml}</span>` : '',
       '</span>',
@@ -847,7 +945,7 @@ let restartLogModuleApi = null;
     return [
       `<span class="restart-log-runtime-line restart-log-runtime-${parsed.kind}">`,
       `<span class="restart-log-runtime-ts">${safeEscapeHtml(parsed.ts)}</span>`,
-      `<span class="restart-log-level restart-log-level-${parsed.kind}">${safeEscapeHtml(parsed.level)}</span>`,
+      `<button type="button" class="restart-log-level restart-log-level-${parsed.kind} restart-log-token" data-xk-restart-log-token="${safeEscapeHtml(parsed.level)}" title="Фильтр: ${safeEscapeHtml(parsed.level)}">${safeEscapeHtml(parsed.level)}</button>`,
       '<span class="restart-log-runtime-message">',
       sourceHtml,
       sourceHtml && bodyHtml ? ' ' : '',
@@ -932,8 +1030,9 @@ let restartLogModuleApi = null;
   }
 
   function entryMatchesCurrentFilter(entry) {
-    if (RL._filter !== 'errors') return true;
     if (!entry) return false;
+    if (!entryMatchesSearch(entry)) return false;
+    if (RL._filter !== 'errors') return true;
     if (entry.summary) return !entry.summary.ok;
     return rawLineLooksLikeError(entry.raw);
   }
@@ -951,6 +1050,23 @@ let restartLogModuleApi = null;
         const pressed = value === active;
         btn.classList.toggle('is-active', pressed);
         btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+      });
+    } catch (error) {}
+  }
+
+  function syncSearchControls() {
+    const query = String(RL._query || '');
+    try {
+      document.querySelectorAll('[data-xk-restart-log-search]').forEach((input) => {
+        if (!input) return;
+        if (input.value !== query) input.value = query;
+      });
+    } catch (error) {}
+
+    try {
+      document.querySelectorAll('[data-xk-restart-log-search-clear]').forEach((btn) => {
+        if (!btn) return;
+        btn.hidden = !normalizeRestartLogSearchQuery(query);
       });
     } catch (error) {}
   }
@@ -1146,6 +1262,7 @@ let restartLogModuleApi = null;
 
   function renderInto(el, rawText) {
     if (!el) return;
+    const stickToBottom = shouldAutoScrollRestartLog(el);
     const allEntries = parseRenderedEntries(rawText || '');
     const entries = filterRenderedEntries(allEntries);
     const scopeId = getRestartLogScopeId(el);
@@ -1182,8 +1299,12 @@ let restartLogModuleApi = null;
       })
       .join('');
 
-    el.innerHTML = html || `<span class="log-line restart-log-empty">${RL._filter === 'errors' ? 'Ошибок нет.' : 'Журнал пуст.'}</span>`;
-    try { el.scrollTop = el.scrollHeight; } catch (error) {}
+    const emptyText = normalizeRestartLogSearchQuery(RL._query)
+      ? 'Совпадений нет.'
+      : (RL._filter === 'errors' ? 'Ошибок нет.' : 'Журнал пуст.');
+    el.innerHTML = html || `<span class="log-line restart-log-empty">${emptyText}</span>`;
+    if (stickToBottom) scrollRestartLogToBottom(el);
+    else updateRestartLogScrollButton(el);
   }
 
   function renderAll() {
@@ -1196,8 +1317,10 @@ let restartLogModuleApi = null;
       });
     }
     syncFilterButtons();
+    syncSearchControls();
     renderAllSummary(parseRenderedEntries(raw));
     bindLogInteractions();
+    updateAllRestartLogScrollButtons();
   }
 
   function ensurePolling() {
@@ -1380,6 +1503,30 @@ let restartLogModuleApi = null;
     renderAll();
   };
 
+  RL.setSearch = function setSearch(query, options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const next = String(query || '');
+    let changed = RL._query !== next;
+    if (opts.resetFilter === true && RL._filter !== 'all') {
+      RL._filter = 'all';
+      changed = true;
+    }
+    if (!changed) {
+      syncSearchControls();
+      syncFilterButtons();
+      return;
+    }
+    RL._query = next;
+    renderAll();
+  };
+
+  RL.applyTokenFilter = function applyTokenFilter(token) {
+    const value = normalizeRestartLogSearchQuery(token);
+    if (!value) return false;
+    RL.setSearch(value, { resetFilter: true });
+    return true;
+  };
+
   RL.rememberXrayPreflightPayload = function rememberXrayPreflightPayload(payload) {
     return rememberPreflightPayload(payload);
   };
@@ -1389,8 +1536,22 @@ let restartLogModuleApi = null;
       if (!el) return;
       try {
         if (el.dataset && el.dataset.xkeenRestartLogInteractions === '1') return;
+        if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+        el.addEventListener('scroll', () => {
+          updateRestartLogAutoScroll(el);
+        }, { passive: true });
         el.addEventListener('click', (event) => {
           const target = event && event.target;
+          const tokenButton = target && typeof target.closest === 'function'
+            ? target.closest('[data-xk-restart-log-token]')
+            : null;
+          if (tokenButton && el.contains(tokenButton)) {
+            event.preventDefault();
+            const token = tokenButton.getAttribute('data-xk-restart-log-token') || tokenButton.textContent || '';
+            RL.applyTokenFilter(token);
+            return;
+          }
+
           const preflightButton = target && typeof target.closest === 'function'
             ? target.closest('[data-xk-restart-log-preflight-ref]')
             : null;
@@ -1587,6 +1748,87 @@ let restartLogModuleApi = null;
     } catch (error) {}
   }
 
+  function ensureRestartLogSearch(actions) {
+    if (!actions) return;
+    try {
+      if (actions.querySelector('[data-xk-restart-log-search]')) return;
+      const wrap = document.createElement('label');
+      wrap.className = 'restart-log-search';
+      wrap.setAttribute('aria-label', 'Поиск по журналу операций');
+      wrap.innerHTML = [
+        '<span class="restart-log-search-icon" aria-hidden="true">⌕</span>',
+        '<input type="search" class="restart-log-search-input" data-xk-restart-log-search="1" placeholder="Поиск">',
+        '<button type="button" class="restart-log-search-clear" data-xk-restart-log-search-clear="1" aria-label="Очистить поиск" hidden>×</button>',
+      ].join('');
+      const anchor = actions.querySelector('[data-xk-restart-log-filter]');
+      insertRestartLogButton(actions, wrap, anchor);
+    } catch (error) {}
+  }
+
+  function ensureRestartLogFullscreenButton(actions) {
+    if (!actions) return;
+    try {
+      if (actions.querySelector('[data-xk-restart-log-action="fullscreen"]')) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-secondary log-btn icon-only restart-log-fullscreen-btn';
+      btn.setAttribute('data-xk-restart-log-action', 'fullscreen');
+      btn.setAttribute('title', 'Полный экран');
+      btn.setAttribute('aria-label', 'Полный экран');
+      btn.textContent = '⛶';
+      insertRestartLogButton(actions, btn, null);
+    } catch (error) {}
+  }
+
+  function ensureRestartLogBottomButton(card) {
+    if (!card) return;
+    try {
+      if (card.querySelector('[data-xk-restart-log-bottom]')) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-secondary log-btn restart-log-bottom-btn';
+      btn.setAttribute('data-xk-restart-log-bottom', '1');
+      btn.setAttribute('aria-label', 'Прокрутить журнал вниз');
+      btn.hidden = true;
+      btn.textContent = 'Вниз';
+      card.appendChild(btn);
+    } catch (error) {}
+  }
+
+  function syncRestartLogFullscreenButtons() {
+    try {
+      document.querySelectorAll('[data-xk-restart-log-action="fullscreen"]').forEach((btn) => {
+        const card = getRestartLogCard(btn);
+        const active = !!(card && card.classList && card.classList.contains('is-fullscreen'));
+        btn.textContent = active ? '🗗' : '⛶';
+        btn.setAttribute('title', active ? 'Восстановить' : 'Полный экран');
+        btn.setAttribute('aria-label', active ? 'Восстановить' : 'Полный экран');
+      });
+    } catch (error) {}
+  }
+
+  function setRestartLogFullscreen(card, on) {
+    if (!card) return false;
+    const next = !!on;
+    try {
+      if (next && RL._fullscreenCard && RL._fullscreenCard !== card) {
+        RL._fullscreenCard.classList.remove('is-fullscreen');
+      }
+      card.classList.toggle('is-fullscreen', next);
+      RL._fullscreenCard = next ? card : null;
+      syncXkeenBodyScrollLock(!!RL._fullscreenCard);
+      syncRestartLogFullscreenButtons();
+      setTimeout(updateAllRestartLogScrollButtons, 0);
+      return true;
+    } catch (error) {}
+    return false;
+  }
+
+  function toggleRestartLogFullscreen(card) {
+    if (!card) return false;
+    return setRestartLogFullscreen(card, !(card.classList && card.classList.contains('is-fullscreen')));
+  }
+
   function normalizeRestartLogChrome() {
     try {
       const cards = new Set();
@@ -1601,17 +1843,23 @@ let restartLogModuleApi = null;
       });
       cards.forEach((card) => {
         try {
+          card.classList.add('xk-restart-log-card');
           const title = Array.from(card.querySelectorAll('h1,h2,h3')).find((node) => isRestartLogTitleText(node.textContent));
           if (title && normalizeRestartLogTitleText(title.textContent) !== RESTART_LOG_TITLE) {
             title.textContent = RESTART_LOG_TITLE;
           }
           const actions = card.querySelector('.log-header-actions');
           if (!actions) return;
+          ensureRestartLogSearch(actions);
           ensureRestartLogFilterButton(actions, 'all', 'Все');
           ensureRestartLogFilterButton(actions, 'errors', 'Ошибки');
           ensureRestartLogActionButton(actions, 'refresh', 'Обновить');
+          ensureRestartLogFullscreenButton(actions);
+          ensureRestartLogBottomButton(card);
         } catch (error) {}
       });
+      syncSearchControls();
+      syncRestartLogFullscreenButtons();
     } catch (error) {}
   }
 
@@ -1629,7 +1877,39 @@ let restartLogModuleApi = null;
           bindOnce(btn, (event) => { event.preventDefault(); RL.copy(); });
         } else if (action === 'refresh') {
           bindOnce(btn, (event) => { event.preventDefault(); RL.load({ toastNewSubscription: false }); });
+        } else if (action === 'fullscreen') {
+          bindOnce(btn, (event) => {
+            event.preventDefault();
+            toggleRestartLogFullscreen(getRestartLogCard(btn));
+          });
         }
+      });
+    } catch (error) {}
+
+    try {
+      document.querySelectorAll('[data-xk-restart-log-search]').forEach((input) => {
+        if (input.dataset && input.dataset.xkeenRestartLogSearchBound === '1') return;
+        input.addEventListener('input', () => {
+          RL.setSearch(input.value || '');
+        });
+        if (input.dataset) input.dataset.xkeenRestartLogSearchBound = '1';
+      });
+      document.querySelectorAll('[data-xk-restart-log-search-clear]').forEach((btn) => {
+        bindOnce(btn, (event) => {
+          event.preventDefault();
+          RL.setSearch('');
+        });
+      });
+    } catch (error) {}
+
+    try {
+      document.querySelectorAll('[data-xk-restart-log-bottom]').forEach((btn) => {
+        bindOnce(btn, (event) => {
+          event.preventDefault();
+          const card = getRestartLogCard(btn);
+          const logEl = card && card.querySelector('[data-xk-restart-log="1"], #restart-log');
+          scrollRestartLogToBottom(logEl);
+        });
       });
     } catch (error) {}
 
@@ -1652,8 +1932,21 @@ let restartLogModuleApi = null;
       bindOnce(copyBtn, (event) => { event.preventDefault(); RL.copy(); });
     } catch (error) {}
 
+    try {
+      if (!RL._escapeBound) {
+        RL._escapeBound = true;
+        document.addEventListener('keydown', (event) => {
+          if (!event || event.key !== 'Escape') return;
+          if (!RL._fullscreenCard) return;
+          setRestartLogFullscreen(RL._fullscreenCard, false);
+        });
+      }
+    } catch (error) {}
+
     bindLogInteractions();
     syncFilterButtons();
+    syncSearchControls();
+    syncRestartLogFullscreenButtons();
 
     try {
       if (getLogEls().length) RL.load({ toastNewSubscription: false });

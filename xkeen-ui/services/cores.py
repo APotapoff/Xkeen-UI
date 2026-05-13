@@ -374,7 +374,7 @@ def switch_core(core: str, error_log_path: str, runtime_log: Callable[[str], Non
                     _core_log("error", "xkeen.cmd_exception", phase=phase, cmd=cmd_s, elapsed_s=dt, error=str(exc))
                     _write_diag(f"[xkeen-ui] {phase}: EXCEPTION after {dt}s cmd={cmd_s} err={exc}")
                     raise CoreSwitchError(
-                        "РћС€РёР±РєР° РІС‹РїРѕР»РЅРµРЅРёСЏ РєРѕРјР°РЅРґС‹",
+                        "Ошибка выполнения команды",
                         details={"phase": phase, "cmd": cmd_s, "elapsed_s": dt, "log": log_file, "error": str(exc)},
                     ) from exc
 
@@ -416,7 +416,7 @@ def switch_core(core: str, error_log_path: str, runtime_log: Callable[[str], Non
                 _core_log("error", "xkeen.cmd_timeout", phase=phase, cmd=cmd_s, elapsed_s=dt)
                 _write_diag(f"[xkeen-ui] {phase}: TIMEOUT after {dt}s cmd={cmd_s}")
                 raise CoreSwitchError(
-                    "РўР°Р№РјР°СѓС‚ РІС‹РїРѕР»РЅРµРЅРёСЏ РєРѕРјР°РЅРґС‹",
+                    "Таймаут выполнения команды",
                     details={"phase": phase, "cmd": cmd_s, "timeout_s": timeout, "elapsed_s": dt, "log": log_file},
                 )
 
@@ -427,7 +427,7 @@ def switch_core(core: str, error_log_path: str, runtime_log: Callable[[str], Non
                 _core_log("error", "xkeen.cmd_failed", phase=phase, cmd=cmd_s, rc=rc, elapsed_s=dt)
                 _write_diag(f"[xkeen-ui] {phase}: FAILED rc={rc} after {dt}s cmd={cmd_s}")
             raise CoreSwitchError(
-                "РљРѕРјР°РЅРґР° Р·Р°РІРµСЂС€РёР»Р°СЃСЊ СЃ РѕС€РёР±РєРѕР№",
+                "Команда завершилась с ошибкой",
                 details={"phase": phase, "cmd": cmd_s, "returncode": rc, "elapsed_s": dt, "log": log_file},
             )
 

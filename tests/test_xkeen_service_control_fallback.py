@@ -134,6 +134,17 @@ def test_core_switch_route_writes_restart_log_entry_with_metadata(monkeypatch, t
     assert runtime_logs == []
 
 
+def test_core_switch_errors_do_not_contain_mojibake():
+    text = Path('xkeen-ui/services/cores.py').read_text(encoding='utf-8')
+
+    assert 'РћС' not in text
+    assert 'РўР' not in text
+    assert 'РљР' not in text
+    assert 'Ошибка выполнения команды' in text
+    assert 'Таймаут выполнения команды' in text
+    assert 'Команда завершилась с ошибкой' in text
+
+
 def test_core_switch_start_does_not_wait_for_foreground_start_command(monkeypatch, tmp_path):
     from services import cores
 
