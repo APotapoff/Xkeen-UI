@@ -1242,10 +1242,11 @@ if [ -d "$SRC_MIHOMO_TEMPLATES" ]; then
   fi
 
   # HWID subscription template (из внешнего проекта)
-  SRC_HWID_TPL="$SRC_MIHOMO_TEMPLATES/hwid_subscription_template.yaml"
+  SRC_HWID_TPL="$SRC_MIHOMO_TEMPLATES/template.yaml"
   if [ -f "$SRC_HWID_TPL" ]; then
-    cp -f "$SRC_HWID_TPL" "$MIHOMO_TEMPLATES_DIR/hwid_subscription_template.yaml"
-    echo "[*] Установлен шаблон hwid_subscription_template.yaml в $MIHOMO_TEMPLATES_DIR"
+    cp -f "$SRC_HWID_TPL" "$MIHOMO_TEMPLATES_DIR/template.yaml"
+    rm -f "$MIHOMO_TEMPLATES_DIR/hwid_subscription_template.yaml"
+    echo "[*] Установлен шаблон template.yaml в $MIHOMO_TEMPLATES_DIR"
   fi
 fi
 

@@ -146,7 +146,7 @@ def test_custom_template_proxy_group_key_completion_suggests_include_all_variant
 
 
 def test_hwid_subscription_template_completion_suggests_rule_provider_format_enum():
-    template = (ROOT / "xkeen-ui" / "opt" / "etc" / "mihomo" / "templates" / "hwid_subscription_template.yaml").read_text(encoding="utf-8")
+    template = (ROOT / "xkeen-ui" / "opt" / "etc" / "mihomo" / "templates" / "template.yaml").read_text(encoding="utf-8")
     doc = template.replace("    format: mrs", "    format: m__CURSOR__", 1)
 
     result = _run_completion(doc)

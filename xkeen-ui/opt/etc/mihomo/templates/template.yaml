@@ -1,87 +1,165 @@
+#######################################################################################################
+# Описание:
+# Веб-интерфейс доступен по адресу http://192.168.1.1:9090/ui (192.168.1.1 = IP роутера).
+# После добавления сервера и запуска mihomo необходимо зайти в веб-интерфейс и выбрать нужное подключение для селекторов.
+#######################################################################################################
+# Если XKeen работает не на всех портах (xkeen -cp), то для корректной работы следующих сервисов выполните:
+# Для Discord:
+# xkeen -ap 80,443,2053:2096,8443,19200:19400,50000:50100
+# Для Whatsapp/Telegram:
+# xkeen -ap 80,443,596:599,1400,3478,5222
+#######################################################################################################
+
+log-level: silent
+mode: rule
+ipv6: false
+allow-lan: true
+redir-port: 5000
+tproxy-port: 5001
+routing-mark: 255
+find-process-mode: off
+unified-delay: true
+external-controller: 0.0.0.0:9090
+external-ui: zashboard
+external-ui-url: https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
+profile: { store-selected: true }
+
+sniffer:
+  enable: true
+  sniff:
+    HTTP:
+      ports: [80, 8080]
+      override-destination: true
+    TLS:
+      ports: [443, 8443]
+
+proxy-providers:
+  proxy-sub:
+    type: http
+    # Замените пример ниже на URL вашей Mihomo/Clash-подписки.
+    url: "https://example.com/subscription"
+    path: ./proxy_providers/proxy-sub.yaml
+    interval: 3600
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: 300
+      timeout: 5000
+      lazy: true
+      expected-status: 204
+    override:
+      udp: true
+      tfo: true
+
 proxy-groups:
 - name: VPN
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Hijacking.png
   include-all: true
-  proxies: ["⚡️ Fastest"]
+  proxies: ["⚡️ Fastest", DIRECT]
+
 - name: ⚡️ Fastest
   type: url-test
-  exclude-filter: "🇷🇺"
+  hidden: true
+  # exclude-filter: "Без VPN|🇷🇺|test|old" # Исключает ноды только из авто-выбора ⚡️ Fastest. В остальных группах они останутся доступны. Добавляй слова/флаги через |. Это regex-фильтр.
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Auto.png
-  include-all: true
+  use:
+  - proxy-sub
   url: https://www.gstatic.com/generate_204
   interval: 300
   tolerance: 150
+  lazy: true
+
 - name: AI
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/ChatGPT.png
   include-all: true
-  proxies: ["VPN","⚡️ Fastest",DIRECT]
+  proxies: ["VPN", "⚡️ Fastest", DIRECT]
+
+- name: GitHub
+  type: select
+  icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/GitHub.png
+  include-all: true
+  proxies: [DIRECT, "VPN", "⚡️ Fastest"]
+
 - name: YouTube
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/YouTube.png
   include-all: true
-  proxies: ["VPN","⚡️ Fastest",DIRECT]
+  proxies: ["VPN", "⚡️ Fastest", DIRECT]
+
 - name: Amazon
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Amazon.png
   include-all: true
-  proxies: [DIRECT,"VPN","⚡️ Fastest"]
-- name: Cloudflare
+  proxies: [DIRECT, "VPN", "⚡️ Fastest"]
+
+- name: CDN
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Cloudflare.png
   include-all: true
-  proxies: [DIRECT,"VPN","⚡️ Fastest"]
+  proxies: [DIRECT, "VPN", "⚡️ Fastest"]
+
 - name: Meta
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Facebook.png
   include-all: true
-  proxies: ["VPN","⚡️ Fastest",DIRECT]
+  proxies: ["VPN", "⚡️ Fastest", DIRECT]
+
 - name: Spotify
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Spotify.png
   include-all: true
-  proxies: [DIRECT,"VPN","⚡️ Fastest"]
+  proxies: [DIRECT, "VPN", "⚡️ Fastest"]
+
 - name: PlayStation
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/PlayStation.png
   include-all: true
-  proxies: [DIRECT, "VPN","⚡️ Fastest"]
+  proxies: [DIRECT, "VPN", "⚡️ Fastest"]
+
 - name: Xbox
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Xbox.png
   include-all: true
-  proxies: [DIRECT, "VPN","⚡️ Fastest"]
+  proxies: [DIRECT, "VPN", "⚡️ Fastest"]
+
 - name: Telegram
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Telegram.png
   include-all: true
-  proxies: ["VPN","⚡️ Fastest",DIRECT]
+  proxies: ["VPN", "⚡️ Fastest", DIRECT]
+
 - name: Steam
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Steam.png
   include-all: true
-  proxies: [DIRECT,"VPN","⚡️ Fastest"]
+  proxies: [DIRECT, "VPN", "⚡️ Fastest"]
+
 - name: Discord
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Discord.png
   include-all: true
-  proxies: ["VPN","⚡️ Fastest",DIRECT]
+  proxies: ["VPN", "⚡️ Fastest", DIRECT]
+
 - name: Заблокировано в РФ
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Filter.png
   include-all: true
-  proxies: ["VPN","⚡️ Fastest",DIRECT]
+  proxies: ["VPN", "⚡️ Fastest", DIRECT]
+
 - name: Недоступно из РФ
   type: select
   icon: https://upload.wikimedia.org/wikipedia/commons/e/ed/RKN_site_logo_%282013-2021%29.png
   include-all: true
-  proxies: ["VPN","⚡️ Fastest",DIRECT]
+  proxies: ["VPN", "⚡️ Fastest", DIRECT]
+
 - name: Остальное
   type: select
   icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Global.png
   include-all: true
-  proxies: [DIRECT,"⚡️ Fastest","VPN"]
+  proxies: [DIRECT, "⚡️ Fastest", "VPN"]
+
 rule-providers:
   apple:
     type: http
@@ -90,6 +168,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/apple.mrs
     path: ./rule-sets/apple.mrs
+
   ai_openai:
     type: http
     behavior: domain
@@ -97,13 +176,15 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/openai.mrs
     path: ./rule-sets/openai.mrs
+
   ai_category:
     type: http
     behavior: domain
     format: mrs
     interval: 86400
-    url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/category-ai-!cn.mrs
+    url: "https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/category-ai-!cn.mrs"
     path: ./rule-sets/category-ai.mrs
+
   playstation:
     type: http
     behavior: domain
@@ -111,6 +192,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/playstation.mrs
     path: ./rule-sets/playstation.mrs
+
   xbox:
     type: http
     behavior: domain
@@ -118,6 +200,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/xbox.mrs
     path: ./rule-sets/xbox.mrs
+
   spotify:
     type: http
     behavior: domain
@@ -125,6 +208,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/spotify.mrs
     path: ./rule-sets/spotify.mrs
+
   steam:
     type: http
     behavior: domain
@@ -132,6 +216,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/steam.yaml
     path: ./rule-sets/steam.yaml
+
   youtube:
     type: http
     behavior: domain
@@ -139,6 +224,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/youtube.yaml
     path: ./rule-sets/youtube.yaml
+
   youtubeip:
     type: http
     behavior: ipcidr
@@ -146,6 +232,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/dorian6996/mihomo-rules/raw/refs/heads/main/rules/geoip/youtube.yaml
     path: ./rule-sets/youtubeip.yaml
+
   meta:
     type: http
     behavior: domain
@@ -153,6 +240,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/meta.mrs
     path: ./rule-sets/meta.mrs
+
   metaip:
     type: http
     behavior: ipcidr
@@ -160,13 +248,15 @@ rule-providers:
     interval: 86400
     url: https://github.com/dorian6996/mihomo-rules/raw/refs/heads/main/rules/geoip/meta.yaml
     path: ./rule-sets/metaip.yaml
+
   telegram:
     type: http
     behavior: domain
     format: mrs
+    interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/telegram.mrs
     path: ./provider/rule-set/geo/geosite/telegram.mrs
-    interval: 86400
+
   telegramip:
     type: http
     behavior: ipcidr
@@ -174,13 +264,15 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geoip/telegram.mrs
     path: ./rule-sets/telegramip.mrs
+
   no_russia_hosts:
     type: http
     behavior: domain
     format: mrs
     interval: 86400
-    url: https://github.com/legiz-ru/mihomo-rule-sets/raw/refs/heads/main/ru-bundle/no-russia-hosts.mrs
-    path: ./rule-sets/other.mrs
+    url: https://github.com/SaltyMonkey/mrs-parsed-data/raw/refs/heads/main/block/itdog-geoblock.mrs
+    path: ./rule-sets/rugeoblock.mrs
+
   discord:
     type: http
     behavior: domain
@@ -188,6 +280,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/discord.mrs
     path: ./rule-sets/discord.mrs
+
   discord_vc:
     type: inline
     behavior: classical
@@ -201,6 +294,7 @@ rule-providers:
       - AND,((IP-CIDR,35.208.0.0/12),(NETWORK,udp),(DST-PORT,50000-51000))
       - AND,((IP-CIDR,5.200.14.128/25),(NETWORK,udp),(DST-PORT,50000-51000))
       - AND,((IP-CIDR,66.22.192.0/18),(NETWORK,udp),(DST-PORT,50000-51000))
+
   oracle:
     type: http
     behavior: ipcidr
@@ -208,6 +302,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/PentiumB/CDN-RuleSet/raw/refs/heads/main/release/oracle.mrs
     path: ./rule-sets/oracle.mrs
+
   roblox:
     type: http
     behavior: domain
@@ -215,6 +310,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/roblox.mrs
     path: ./rule-sets/roblox.mrs
+
   ru_blocked:
     type: http
     behavior: domain
@@ -222,6 +318,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/legiz-ru/mihomo-rule-sets/raw/refs/heads/main/ru-bundle/itdoginfo-inside-russia.mrs
     path: ./rule-sets/itdoginfo-inside-russia.mrs
+
   politic:
     type: http
     behavior: domain
@@ -229,6 +326,7 @@ rule-providers:
     interval: 86400
     url: https://github.com/dorian6996/mihomo-rules/raw/refs/heads/main/rules/geosite/politic.yaml
     path: ./rule-sets/politic.yaml
+
   amazon:
     type: http
     behavior: ipcidr
@@ -236,13 +334,23 @@ rule-providers:
     interval: 86400
     url: https://github.com/PentiumB/CDN-RuleSet/raw/refs/heads/main/release/amazon.mrs
     path: ./rule-sets/amazon.mrs
-  akamai:
+
+  akamaiip:
     type: http
     behavior: ipcidr
     format: mrs
     interval: 86400
     url: https://github.com/PentiumB/CDN-RuleSet/raw/refs/heads/main/release/akamai.mrs
+    path: ./rule-sets/akamaiip.mrs
+
+  akamai:
+    type: http
+    behavior: domain
+    format: mrs
+    interval: 86400
+    url: https://github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/akamai.mrs
     path: ./rule-sets/akamai.mrs
+
   cloudflare:
     type: http
     behavior: ipcidr
@@ -250,33 +358,39 @@ rule-providers:
     interval: 86400
     url: https://github.com/PentiumB/CDN-RuleSet/raw/refs/heads/main/release/cloudflare.mrs
     path: ./rule-sets/cloudflare.mrs
+
   geosite-ru:
     type: http
     behavior: domain
     format: yaml
+    interval: 86400
     url: https://raw.githubusercontent.com/Davoyan/mihomo-rule-sets/main/rules/category-ru.yaml
     path: ./rule-sets/geosite-ru.yaml
-    interval: 86400
+
   geoip-ru:
     type: http
     behavior: ipcidr
     format: mrs
+    interval: 86400
     url: https://raw.githubusercontent.com/Davoyan/ipinfo/main/geo/geoip/ru.mrs
     path: ./rule-sets/geoip-ru.mrs
-    interval: 86400
+
   geosite-private:
     type: http
     behavior: domain
     format: mrs
+    interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geosite/private.mrs
     path: ./provider/rule-set/geosite-private.mrs
-    interval: 86400
+
   geoip-private:
     type: http
     behavior: ipcidr
     format: mrs
+    interval: 86400
     url: https://github.com/MetaCubeX/meta-rules-dat/raw/meta/geo/geoip/private.mrs
     path: ./provider/rule-set/geoip-private.mrs
+
   ads_domains:
     type: http
     behavior: domain
@@ -284,49 +398,72 @@ rule-providers:
     interval: 86400
     url: https://github.com/zxc-rv/ad-filter/releases/latest/download/adlist.mrs
     path: ./rule-sets/adlist.mrs
+
 rules:
   - RULE-SET,geosite-private,DIRECT
   - RULE-SET,geoip-private,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
+
+  # Блокировка QUIC / HTTP/3. Может затронуть любые приложения, использующие UDP 443/8443.
+  # Ставим выше сервисных правил, чтобы UDP 443 не уходил в YouTube/Google/Discord/etc.
+  - AND,((NETWORK,udp),(DST-PORT,443)),REJECT
+  - AND,((NETWORK,udp),(DST-PORT,8443)),REJECT
+
   - RULE-SET,ads_domains,REJECT
   - RULE-SET,apple,DIRECT
-  - DOMAIN-SUFFIX,github.com,DIRECT
-  - DOMAIN-SUFFIX,githubusercontent.com,DIRECT
-  - DOMAIN-SUFFIX,raw.githubusercontent.com,DIRECT
+
+  - DOMAIN-SUFFIX,github.com,GitHub
+  - DOMAIN-SUFFIX,githubusercontent.com,GitHub
+  - DOMAIN-SUFFIX,raw.githubusercontent.com,GitHub
+  - DOMAIN-SUFFIX,githubassets.com,GitHub
+  - DOMAIN-SUFFIX,github.io,GitHub
+  - DOMAIN-SUFFIX,githubapp.com,GitHub
+  - DOMAIN-SUFFIX,github.dev,GitHub
+  - DOMAIN-SUFFIX,githubstatus.com,GitHub
+
   - RULE-SET,ai_openai,AI
   - RULE-SET,ai_category,AI
+
   - RULE-SET,playstation,PlayStation
   - RULE-SET,xbox,Xbox
   - RULE-SET,spotify,Spotify
   - RULE-SET,steam,Steam
+
   - RULE-SET,youtube,YouTube
+  - RULE-SET,youtubeip,YouTube,no-resolve
+
   - RULE-SET,meta,Meta
   - RULE-SET,metaip,Meta,no-resolve
+
   - RULE-SET,telegram,Telegram
   - RULE-SET,telegramip,Telegram,no-resolve
+
   - RULE-SET,discord,Discord
   - RULE-SET,discord_vc,Discord
-  - PROCESS-NAME-REGEX,(?i).*discord.*,Discord
-  - DOMAIN-SUFFIX,play.google.com,Остальное
-  - DOMAIN-SUFFIX,googleapis.com,Остальное
-  - DOMAIN-SUFFIX,google.com,Остальное
+
   - RULE-SET,ru_blocked,Заблокировано в РФ
   - RULE-SET,politic,Заблокировано в РФ
   - DOMAIN-SUFFIX,cdn-service.space,Заблокировано в РФ
+  - DOMAIN-SUFFIX,pushbr.com,Заблокировано в РФ
   - DOMAIN-SUFFIX,truenas.com,Заблокировано в РФ
   - DOMAIN-SUFFIX,truenasconnect.net,Заблокировано в РФ
   - DOMAIN-SUFFIX,smarttvcdn.online,Заблокировано в РФ
   - DST-PORT,30000-31000,Заблокировано в РФ
   - DOMAIN-SUFFIX,wwsga.me,Заблокировано в РФ
   - DOMAIN-SUFFIX,gran-turismo.com,Заблокировано в РФ
+
   - RULE-SET,no_russia_hosts,Недоступно из РФ
   - RULE-SET,roblox,Недоступно из РФ
   - DOMAIN-SUFFIX,4pda.to,Недоступно из РФ
   - DOMAIN-SUFFIX,happ-proxy.com,Недоступно из РФ
   - RULE-SET,oracle,Недоступно из РФ,no-resolve
+
   - RULE-SET,amazon,Amazon,no-resolve
-  - RULE-SET,akamai,Amazon,no-resolve
-  - RULE-SET,cloudflare,Cloudflare,no-resolve
+  - RULE-SET,akamai,CDN
+  - RULE-SET,akamaiip,CDN,no-resolve
+  - RULE-SET,cloudflare,CDN,no-resolve
+
   - RULE-SET,geosite-ru,DIRECT
   - RULE-SET,geoip-ru,DIRECT,no-resolve
+
   - MATCH,Остальное

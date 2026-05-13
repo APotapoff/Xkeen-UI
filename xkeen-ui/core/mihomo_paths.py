@@ -50,6 +50,10 @@ def init_mihomo_paths(config_path: str) -> Tuple[str, str, str, str]:
                 dst = os.path.join(mihomo_templates_dir, name)
                 if os.path.isfile(src):
                     shutil.copy2(src, dst)
+            legacy_hwid_template = os.path.join(mihomo_templates_dir, "hwid_subscription_template.yaml")
+            renamed_hwid_template = os.path.join(mihomo_templates_dir, "template.yaml")
+            if os.path.isfile(renamed_hwid_template) and os.path.isfile(legacy_hwid_template):
+                os.remove(legacy_hwid_template)
     except Exception as e:  # noqa: BLE001
         # Do not fail the app on template copy errors, but leave a trace for support.
         try:
