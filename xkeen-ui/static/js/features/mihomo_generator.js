@@ -5,6 +5,7 @@ import {
   getMihomoEditorEngineApi,
 } from './mihomo_runtime.js';
 import {
+  ansiToXkeenHtml,
   attachXkeenEditorToolbar,
   buildXkeenEditorCommonKeys,
   getXkeenEditorToolbarDefaultItems,
@@ -310,7 +311,7 @@ let mihomoGeneratorModuleApi = null;
           if (!text) return "";
           const lines = String(text).replace(/\r\n/g, "\n").split("\n");
           return lines.map((line) => {
-            const safe = escapeHtml(line);
+            const safe = ansiToXkeenHtml(line);
             let cls = "log-line";
             if (/fatal|panic/i.test(line)) cls += " log-fatal";
             else if (/error|\berr\b|err\[/i.test(line)) cls += " log-error";

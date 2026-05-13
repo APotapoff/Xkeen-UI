@@ -11,6 +11,8 @@ def test_mihomo_panel_validation_modal_uses_compact_premium_rendering_contract()
 
     assert "validationGrid: 'mihomo-validation-grid'" in script
     assert "validationCopyBtn: 'mihomo-validation-copy-btn'" in script
+    assert "ansiToXkeenHtml," in script
+    assert "const safe = ansiToXkeenHtml(line);" in script
     assert "function buildValidationExplainItems(payload) {" in script
     assert "function extractMihomoValidationMessage(line) {" in script
     assert "function humanizeValidationMessage(message, lineCol) {" in script

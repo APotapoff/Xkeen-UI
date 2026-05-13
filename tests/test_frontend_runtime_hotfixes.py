@@ -172,6 +172,8 @@ def test_mihomo_result_modal_collapses_empty_log_column_and_uses_compact_section
     script = Path('xkeen-ui/static/js/features/mihomo_generator.js').read_text(encoding='utf-8')
     template = Path('xkeen-ui/templates/mihomo_generator.html').read_text(encoding='utf-8')
 
+    assert 'ansiToXkeenHtml,' in script
+    assert 'const safe = ansiToXkeenHtml(line);' in script
     assert 'const mihomoResultGrid = document.getElementById("mihomoResultGrid");' in script
     assert 'const mihomoResultSidePanel = document.getElementById("mihomoResultSidePanel");' in script
     assert "if (mihomoResultSidePanel) mihomoResultSidePanel.style.display = hasLog ? '' : 'none';" in script
@@ -183,6 +185,12 @@ def test_mihomo_result_modal_collapses_empty_log_column_and_uses_compact_section
     assert 'class="mihomo-result-overview"' in template
     assert '.mihomo-result-grid[data-has-log="0"] {' in template
     assert '.mihomo-result-log-shell {' in template
+
+
+def test_mihomo_generator_bootstrap_loads_shared_ansi_formatter():
+    bootstrap = Path('xkeen-ui/static/js/pages/mihomo_generator.screen.bootstrap.js').read_text(encoding='utf-8')
+
+    assert "import '../util/ansi.js?v=20260302a';" in bootstrap
 
 
 def test_mihomo_result_modal_supports_compact_validate_mode():

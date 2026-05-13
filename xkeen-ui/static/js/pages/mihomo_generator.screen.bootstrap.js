@@ -11,6 +11,7 @@ import '../ui/confirm_modal.js';
 import '../ui/theme.js?v=20260324b';
 import '../ui/tooltips_auto.js?v=20260119d';
 import '../util/helpers.js';
+import '../util/ansi.js?v=20260302a';
 import '../util/command_job.js';
 import '../ui/spinner_fetch.js';
 import { bootMihomoGeneratorPage } from './mihomo_generator.init.js';
