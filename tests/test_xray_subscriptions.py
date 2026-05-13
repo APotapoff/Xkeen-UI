@@ -69,6 +69,43 @@ def test_upsert_subscription_validates_regex_filters(tmp_path: Path):
         )
 
 
+def test_upsert_subscription_allows_same_url_with_distinct_filtered_profiles(tmp_path: Path):
+    from services import xray_subscriptions as subs
+
+    ui_state_dir = tmp_path / "state"
+    ui_state_dir.mkdir()
+
+    first = subs.upsert_subscription(
+        str(ui_state_dir),
+        {
+            "name": "VNI regular",
+            "tag": "vni_hosting",
+            "url": "https://example.com/subscription",
+            "name_filter": "Russia|VNI",
+        },
+    )
+    second = subs.upsert_subscription(
+        str(ui_state_dir),
+        {
+            "name": "VNI anti whitelist",
+            "tag": "white_list",
+            "url": "https://example.com/subscription",
+            "name_filter": "Анти|Anti|White|Бел",
+        },
+    )
+
+    assert first["id"] == "vni_hosting"
+    assert second["id"] == "white_list"
+    assert first["url"] == second["url"]
+    assert first["output_file"] == "04_outbounds.vni_hosting.json"
+    assert second["output_file"] == "04_outbounds.white_list.json"
+
+    state = subs.load_subscription_state(str(ui_state_dir))
+    saved = state["subscriptions"]
+    assert [item["id"] for item in saved] == ["vni_hosting", "white_list"]
+    assert [item["name_filter"] for item in saved] == ["Russia|VNI", "Анти|Anti|White|Бел"]
+
+
 def test_refresh_subscription_writes_generated_fragment_and_observatory(tmp_path: Path, monkeypatch):
     from services import xray_subscriptions as subs
 

@@ -696,6 +696,11 @@
           "path": "static/js/util/strip_json_comments.js",
           "globals": [],
           "lazy_features": []
+        },
+        {
+          "path": "static/js/ui/routing_scenarios.js",
+          "globals": [],
+          "lazy_features": []
         }
       ],
       "direct_init_globals": [],

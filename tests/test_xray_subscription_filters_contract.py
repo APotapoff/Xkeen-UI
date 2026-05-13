@@ -205,8 +205,11 @@ def test_xray_subscription_modal_exposes_transport_preview_and_manual_exclusions
     assert "function subsPingAllTooltipText(sub, hasPingable) {" in outbounds_src
     assert "class=\"xk-sub-file-badge\">JSON</span>" in outbounds_src
     assert "xk-sub-list-action xk-sub-list-action-refresh xk-sub-refresh" in outbounds_src
+    assert "xk-sub-list-action xk-sub-list-action-duplicate xk-sub-duplicate" in outbounds_src
+    assert "function subsDuplicate(id) {" in outbounds_src
     assert "xk-sub-list-action xk-sub-list-action-delete xk-sub-delete" in outbounds_src
     assert "Array.from(tbody.querySelectorAll('.xk-sub-file-link')).forEach((btn) => {" in outbounds_src
+    assert "Array.from(tbody.querySelectorAll('.xk-sub-duplicate')).forEach((btn) => {" in outbounds_src
     assert "restoreFragmentSelection($(IDS.fragmentSelect), name, _fragmentDir, _fragmentItems);" in outbounds_src
     assert "xk-sub-open" not in outbounds_src
     assert "xk-sub-edit" not in outbounds_src

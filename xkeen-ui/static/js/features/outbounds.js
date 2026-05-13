@@ -3751,6 +3751,24 @@ let outboundsModuleApi = null;
       return raw.slice(0, SUB_TAG_PREFIX_MAX_LEN).replace(/^[_.:-]+|[_.:-]+$/g, '') || 'sub';
     }
 
+    function subsUniqueTagPrefix(base) {
+      const used = new Set(
+        (_subscriptions || [])
+          .map((item) => String((item && (item.tag || item.id)) || '').trim())
+          .filter(Boolean)
+      );
+      const candidate = subsCleanTagPrefix(base || 'sub-copy', 'sub-copy');
+      if (!used.has(candidate)) return candidate;
+      const root = candidate.slice(0, Math.max(1, SUB_TAG_PREFIX_MAX_LEN - 4)).replace(/^[_.:-]+|[_.:-]+$/g, '') || 'sub';
+      let idx = 2;
+      while (idx < 1000) {
+        const next = subsCleanTagPrefix(`${root}-${idx}`, root);
+        if (!used.has(next)) return next;
+        idx += 1;
+      }
+      return subsCleanTagPrefix(`${root}-${Date.now()}`, root);
+    }
+
     function subsNormalizeBalancerTags(value) {
       const items = Array.isArray(value) ? value : [];
       const known = new Set((_subscriptionRoutingBalancers || []).map((item) => String(item && item.tag || '').trim()).filter(Boolean));
@@ -5655,6 +5673,17 @@ let outboundsModuleApi = null;
             </button>
             <button
               type="button"
+              class="btn-secondary btn-compact xk-sub-list-action xk-sub-list-action-duplicate xk-sub-duplicate"
+              data-id="${id}"
+              title="Дублировать"
+              data-tooltip="Создать новый черновик с тем же URL и фильтрами, но с отдельным tag prefix."
+              aria-label="Дублировать подписку"
+            >
+              <span class="xk-sub-icon-glyph" aria-hidden="true">&#10697;</span>
+              <span class="xk-visually-hidden">Дублировать</span>
+            </button>
+            <button
+              type="button"
               class="btn-danger btn-compact xk-sub-list-action xk-sub-list-action-delete xk-sub-delete"
               data-id="${id}"
               title="Удалить"
@@ -5682,6 +5711,12 @@ let outboundsModuleApi = null;
         btn.addEventListener('click', (e) => {
           e.preventDefault();
           subsRefresh(btn.getAttribute('data-id') || '');
+        });
+      });
+      Array.from(tbody.querySelectorAll('.xk-sub-duplicate')).forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          subsDuplicate(btn.getAttribute('data-id') || '');
         });
       });
       Array.from(tbody.querySelectorAll('.xk-sub-delete')).forEach((btn) => {
@@ -5713,6 +5748,48 @@ let outboundsModuleApi = null;
 
       try { subsRenderNodeList(); } catch (e) {}
       try { subsRenderDiagnostics(); } catch (e2) {}
+    }
+
+    async function subsDuplicate(id) {
+      const sub = subsFindById(id);
+      if (!sub) {
+        subsSetStatus('Подписка не найдена. Обнови список и попробуй снова.', true);
+        return false;
+      }
+      const ok = await subsConfirmDiscardDraft({
+        message: 'Создать черновик копии и потерять текущие несохранённые правки?',
+        okText: 'Дублировать',
+        cancelText: 'Остаться',
+        restore: false,
+      });
+      if (!ok) return false;
+
+      const sourceTag = String(sub.tag || sub.id || 'sub').trim();
+      const copyTag = subsUniqueTagPrefix(`${sourceTag}-copy`);
+      const sourceName = String(sub.name || sub.tag || sub.id || 'Подписка').trim();
+      const copyName = `${sourceName} · копия`;
+      const draft = {
+        id: '',
+        name: copyName,
+        tag: copyTag,
+        url: String(sub.url || '').trim(),
+        name_filter: String(sub.name_filter || '').trim(),
+        type_filter: String(sub.type_filter || '').trim(),
+        transport_filter: String(sub.transport_filter || '').trim(),
+        excluded_node_keys: Array.isArray(sub.excluded_node_keys) ? sub.excluded_node_keys.slice() : [],
+        interval_hours: sub.interval_hours || SUB_DEFAULT_INTERVAL_HOURS,
+        enabled: sub.enabled !== false,
+        ping_enabled: sub.ping_enabled !== false,
+        routing_mode: String(sub.routing_mode || 'safe-fallback') || 'safe-fallback',
+        routing_auto_rule: sub.routing_auto_rule !== false,
+        routing_balancer_tags: Array.isArray(sub.routing_balancer_tags) ? sub.routing_balancer_tags.slice() : [],
+      };
+      subsFillForm(draft, { focus: false, keepRefreshNow: true });
+      try { $(SUB_IDS.refreshNow).checked = true; } catch (e) {}
+      try { $(SUB_IDS.nameFilter).focus(); } catch (e2) {}
+      subsSetStatus('Черновик копии создан. Измени фильтр или tag prefix и нажми «Сохранить».', false, true);
+      try { toastXkeen('Черновик копии подписки создан.', 'info'); } catch (e3) {}
+      return true;
     }
 
     function subsRenderNodeList() {

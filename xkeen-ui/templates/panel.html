@@ -436,12 +436,46 @@
         <button id="inbounds-restore-auto-btn" class="btn-icon" aria-label="Restore" data-tooltip="Восстановить inbounds из автобэкапа.">⏪</button>
       </div>
 
-      <div id="inbounds-status" class="status"></div>
-      </div>
-    </section>
+	      <div id="inbounds-status" class="status"></div>
+	      </div>
+	    </section>
 
-    <!-- Outbounds VLESS editor -->
-    <section class="card routing-side-card routing-side-card--outbounds">
+	    <!-- Routing scenario switcher -->
+	    <section class="card routing-side-card routing-side-card--scenario xk-only-routing">
+	      <div class="commands-header" id="routing-scenario-header">
+	        <h2>Сценарий маршрутизации</h2>
+	        <span id="routing-scenario-badge">—</span>
+	      </div>
+
+	      <div id="routing-scenario-body">
+	        <div class="routing-scenario-options" role="radiogroup" aria-label="Сценарий маршрутизации Xray">
+	          <label class="mode-item routing-scenario-option">
+	            <input id="routing-scenario-normal" type="radio" name="routing_scenario" value="normal" checked>
+	            <div>
+	              <strong>Обычный</strong><br>
+	              <small class="xk-card-desc">Текущие правила файла: заблокированное через VPS/резерв, остальное по routing.</small>
+	            </div>
+	          </label>
+
+	          <label class="mode-item routing-scenario-option">
+	            <input id="routing-scenario-mobile" type="radio" name="routing_scenario" value="mobile-whitelist">
+	            <div>
+	              <strong>Мобильный white-list</strong><br>
+	              <small class="xk-card-desc">Россия напрямую, всё остальное через пул <code>white_list</code>.</small>
+	            </div>
+	          </label>
+	        </div>
+
+	        <div class="routing-scenario-actions">
+	          <button id="routing-scenario-apply-btn" class="btn-secondary btn-compact" type="button"
+	                  data-tooltip="Применить выбранный сценарий к текущему routing-файлу и сохранить его.">Применить</button>
+	        </div>
+	        <div id="routing-scenario-status" class="routing-scenario-status" aria-live="polite"></div>
+	      </div>
+	    </section>
+
+	    <!-- Outbounds VLESS editor -->
+	    <section class="card routing-side-card routing-side-card--outbounds">
       <div class="commands-header" id="outbounds-header" role="button" tabindex="0">
         <h2>Прокси ({{ outbounds_name|e }})</h2>
         <span id="outbounds-arrow">▼</span>

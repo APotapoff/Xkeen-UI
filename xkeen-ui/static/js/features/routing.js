@@ -33,6 +33,14 @@ import {
   toastXkeen,
 } from './xkeen_runtime.js';
 import { stripJsonComments as stripJsonCommentsUtil } from '../util/strip_json_comments.js';
+import {
+  ROUTING_SCENARIO_MOBILE_BALANCER_TAG,
+  ROUTING_SCENARIO_MOBILE_SELECTOR,
+  ROUTING_SCENARIO_MOBILE_WHITELIST,
+  ROUTING_SCENARIO_NORMAL,
+  applyRoutingScenarioText,
+  detectRoutingScenarioFromText,
+} from '../ui/routing_scenarios.js';
 import { applySchemaToEditor, resolveEditorSnippetProvider } from '../ui/editor_schema.js';
 import { validateXrayRoutingSemantics } from '../ui/schema_semantic_validation.js';
 import { createXrayQuickFixProvider } from '../ui/schema_quickfixes.js';
@@ -227,6 +235,12 @@ import { createXrayQuickFixProvider } from '../ui/schema_quickfixes.js';
 
     // Global flag
     autoRestart: 'global-autorestart-xkeen',
+
+    scenarioNormal: 'routing-scenario-normal',
+    scenarioMobile: 'routing-scenario-mobile',
+    scenarioApply: 'routing-scenario-apply-btn',
+    scenarioStatus: 'routing-scenario-status',
+    scenarioBadge: 'routing-scenario-badge',
   };
 
   let _inited = false;
@@ -422,6 +436,7 @@ import { createXrayQuickFixProvider } from '../ui/schema_quickfixes.js';
   }
 
   let _restartLogModulePromise = null;
+  let _routingScenarioWired = false;
 
   function getRoutingShellApi() {
     const api = getRoutingShellModuleApi();
@@ -4176,6 +4191,168 @@ function closeHelp() {
     if (btn.dataset) btn.dataset.xkeenWired = '1';
   }
 
+  function selectedRoutingScenarioMode() {
+    const normal = $(IDS.scenarioNormal);
+    const mobile = $(IDS.scenarioMobile);
+    try {
+      if (mobile && mobile.checked) return ROUTING_SCENARIO_MOBILE_WHITELIST;
+      if (normal && normal.checked) return ROUTING_SCENARIO_NORMAL;
+    } catch (e) {}
+    return ROUTING_SCENARIO_NORMAL;
+  }
+
+  function setRoutingScenarioStatus(message, tone) {
+    const el = $(IDS.scenarioStatus);
+    if (!el) return;
+    const text = String(message || '').trim();
+    try {
+      el.textContent = text;
+      el.classList.toggle('is-error', String(tone || '') === 'error');
+      el.classList.toggle('is-success', String(tone || '') === 'success');
+      el.classList.toggle('is-warning', String(tone || '') === 'warning');
+      el.hidden = !text;
+    } catch (e) {}
+  }
+
+  function routingScenarioLabel(mode) {
+    return mode === ROUTING_SCENARIO_MOBILE_WHITELIST ? 'Мобильный white-list' : 'Обычный';
+  }
+
+  function syncRoutingScenarioUiFromEditor(reason) {
+    const normal = $(IDS.scenarioNormal);
+    const mobile = $(IDS.scenarioMobile);
+    const badge = $(IDS.scenarioBadge);
+    const applyBtn = $(IDS.scenarioApply);
+    if (!normal && !mobile && !badge && !applyBtn) return;
+
+    const isRouting = String(_routingMode || '') === 'routing';
+    try { if (applyBtn) applyBtn.disabled = !isRouting; } catch (e) {}
+    if (!isRouting) {
+      try { if (badge) badge.textContent = 'Фрагмент'; } catch (e2) {}
+      setRoutingScenarioStatus('Сценарии доступны только для routing-файла.', 'warning');
+      return;
+    }
+
+    const detected = detectRoutingScenarioFromText(getEditorText());
+    if (detected === ROUTING_SCENARIO_MOBILE_WHITELIST) {
+      try { if (mobile) mobile.checked = true; } catch (e3) {}
+      try { if (normal) normal.checked = false; } catch (e4) {}
+      try { if (badge) badge.textContent = 'White-list'; } catch (e5) {}
+      setRoutingScenarioStatus(
+        `Активен аварийный режим: Россия идёт напрямую, остальное через ${ROUTING_SCENARIO_MOBILE_SELECTOR}.`,
+        'success'
+      );
+      return;
+    }
+
+    if (detected === ROUTING_SCENARIO_NORMAL) {
+      try { if (normal) normal.checked = true; } catch (e6) {}
+      try { if (mobile) mobile.checked = false; } catch (e7) {}
+      try { if (badge) badge.textContent = 'Обычный'; } catch (e8) {}
+      setRoutingScenarioStatus(
+        String(reason || '') === 'choice'
+          ? 'Обычный режим выбран. Нажми «Применить», чтобы убрать аварийный white-list блок.'
+          : 'Активен обычный routing: используются текущие правила файла.',
+        'success'
+      );
+      return;
+    }
+
+    try { if (badge) badge.textContent = 'JSON'; } catch (e9) {}
+    setRoutingScenarioStatus('Не удалось определить сценарий: проверь JSON перед применением.', 'error');
+  }
+
+  async function applyRoutingScenarioSelection() {
+    const mode = selectedRoutingScenarioMode();
+    const raw = getEditorText();
+    const modeLabel = routingScenarioLabel(mode);
+    const details = mode === ROUTING_SCENARIO_MOBILE_WHITELIST
+      ? [
+          `Будет создан balancer ${ROUTING_SCENARIO_MOBILE_BALANCER_TAG} с selector ${ROUTING_SCENARIO_MOBILE_SELECTOR}.`,
+          'В начало rules будет добавлен direct для РФ и catch-all на anti white-list пул.',
+          'Существующие ручные правила останутся ниже управляемого блока.',
+        ]
+      : [
+          'Управляемый аварийный white-list блок будет удалён.',
+          'Остальные правила и balancer-ы routing-файла останутся как есть.',
+        ];
+
+    const ok = await confirmXkeenAction({
+      title: 'Применить сценарий маршрутизации?',
+      message: `Сценарий: ${modeLabel}.`,
+      details,
+      okText: 'Применить',
+      cancelText: 'Отмена',
+    }, `Применить сценарий: ${modeLabel}?`);
+    if (!ok) return false;
+
+    if (hasUserComments(raw)) {
+      const commentsOk = await confirmCommentsLoss('Сценарий маршрутизации');
+      if (!commentsOk) return false;
+    }
+
+    let result = null;
+    try {
+      result = applyRoutingScenarioText(raw, mode);
+    } catch (err) {
+      const msg = 'Не удалось собрать сценарий: ' + String(err && err.message ? err.message : err);
+      setRoutingScenarioStatus(msg, 'error');
+      setError(msg);
+      return false;
+    }
+
+    replaceEditorText(result.text, {
+      reason: 'routing-scenario',
+      markDirty: true,
+      scrollTop: false,
+    });
+    syncRoutingScenarioUiFromEditor('apply');
+
+    if (!validate()) {
+      setRoutingScenarioStatus('Сценарий вставлен, но JSON/семантика требует проверки перед сохранением.', 'error');
+      return false;
+    }
+
+    setRoutingScenarioStatus('Сценарий применён, сохраняю routing…', 'success');
+    await save();
+    syncRoutingScenarioUiFromEditor('saved');
+    return true;
+  }
+
+  function wireRoutingScenarioSwitcher() {
+    if (_routingScenarioWired) return;
+    const applyBtn = $(IDS.scenarioApply);
+    const normal = $(IDS.scenarioNormal);
+    const mobile = $(IDS.scenarioMobile);
+    if (!applyBtn && !normal && !mobile) return;
+
+    wireButton(IDS.scenarioApply, applyRoutingScenarioSelection);
+    [normal, mobile].forEach((input) => {
+      if (!input || (input.dataset && input.dataset.xkScenarioWired === '1')) return;
+      input.addEventListener('change', () => {
+        setRoutingScenarioStatus(
+          selectedRoutingScenarioMode() === ROUTING_SCENARIO_MOBILE_WHITELIST
+            ? `Выбран аварийный режим: после применения весь не-RU трафик пойдёт через ${ROUTING_SCENARIO_MOBILE_SELECTOR}.`
+            : 'Выбран обычный режим: после применения аварийный white-list блок будет убран.',
+          'warning'
+        );
+      });
+      if (input.dataset) input.dataset.xkScenarioWired = '1';
+    });
+
+    try {
+      document.addEventListener('xkeen:routing-editor-content', () => {
+        try { syncRoutingScenarioUiFromEditor('content'); } catch (e) {}
+      });
+      window.addEventListener('xkeen-routing-mode', () => {
+        try { syncRoutingScenarioUiFromEditor('mode'); } catch (e) {}
+      });
+    } catch (e) {}
+
+    _routingScenarioWired = true;
+    syncRoutingScenarioUiFromEditor('wire');
+  }
+
   function wireUI() {
     // Main buttons
     wireButton(IDS.btnSave, () => {
@@ -4191,6 +4368,7 @@ function closeHelp() {
     // Optional utilities
     wireButton(IDS.btnClearComments, clearComments);
     wireButton(IDS.btnSort, sortRules);
+    wireRoutingScenarioSwitcher();
 
     // Collapse header
     const header = $(IDS.header);

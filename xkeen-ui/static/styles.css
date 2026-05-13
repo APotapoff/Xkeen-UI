@@ -25410,6 +25410,91 @@ body.panel-page .routing-side-card--inbounds .mode-item:has(input:checked) input
   filter: drop-shadow(0 0 6px rgba(96, 165, 250, 0.42));
 }
 
+body.panel-page .routing-side-card--scenario #routing-scenario-badge {
+  width: auto;
+  min-width: 82px;
+  padding: 0 10px;
+  color: #bfdbfe;
+  font-size: calc(12px * var(--xk-font-scale));
+  text-transform: none;
+}
+
+body.panel-page .routing-scenario-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+body.panel-page .routing-side-card--scenario .routing-scenario-option {
+  cursor: pointer;
+}
+
+body.panel-page .routing-side-card--scenario .routing-scenario-option input {
+  width: 14px;
+  height: 14px;
+  margin-top: 6px;
+  accent-color: #60a5fa;
+}
+
+body.panel-page .routing-side-card--scenario .routing-scenario-option code {
+  color: #bfdbfe;
+}
+
+body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) {
+  border-color: rgba(45, 212, 191, 0.34);
+  background:
+    linear-gradient(180deg, rgba(13, 56, 72, 0.96), rgba(8, 34, 50, 0.94)),
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.16), transparent 42%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 16px 34px rgba(20, 184, 166, 0.14);
+}
+
+body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) strong {
+  color: #f0fdfa;
+}
+
+body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) small,
+body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) code {
+  color: rgba(204, 251, 241, 0.90);
+}
+
+body.panel-page .routing-scenario-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+body.panel-page .routing-scenario-actions .btn-compact {
+  min-height: 32px;
+}
+
+body.panel-page .routing-scenario-status {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(96, 165, 250, 0.12);
+  background: rgba(4, 12, 32, 0.42);
+  color: rgba(191, 219, 254, 0.78);
+  font-size: calc(12px * var(--xk-font-scale));
+  line-height: 1.35;
+}
+
+body.panel-page .routing-scenario-status.is-success {
+  border-color: rgba(34, 197, 94, 0.22);
+  color: #bbf7d0;
+}
+
+body.panel-page .routing-scenario-status.is-warning {
+  border-color: rgba(245, 158, 11, 0.24);
+  color: #fde68a;
+}
+
+body.panel-page .routing-scenario-status.is-error {
+  border-color: rgba(248, 113, 113, 0.24);
+  color: #fecaca;
+}
+
 body.panel-page .routing-side-card .links {
   display: flex;
   flex-direction: column;
@@ -25528,6 +25613,54 @@ html[data-theme="light"] body.panel-page .routing-side-card--inbounds .mode-item
 
 html[data-theme="light"] body.panel-page .routing-side-card--inbounds .mode-item:has(input:checked) small {
   color: rgba(37, 55, 90, 0.90);
+}
+
+html[data-theme="light"] body.panel-page .routing-side-card--scenario #routing-scenario-badge {
+  color: #23539b;
+}
+
+html[data-theme="light"] body.panel-page .routing-side-card--scenario .routing-scenario-option code {
+  color: #23539b;
+}
+
+html[data-theme="light"] body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) {
+  border-color: rgba(20, 184, 166, 0.26);
+  background:
+    linear-gradient(180deg, rgba(224, 255, 250, 0.98), rgba(209, 250, 244, 0.94)),
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.16), transparent 38%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 14px 28px rgba(45, 120, 135, 0.10);
+}
+
+html[data-theme="light"] body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) strong {
+  color: #123a45;
+}
+
+html[data-theme="light"] body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) small,
+html[data-theme="light"] body.panel-page .routing-side-card--scenario .routing-scenario-option:has(input:checked) code {
+  color: rgba(19, 78, 74, 0.88);
+}
+
+html[data-theme="light"] body.panel-page .routing-scenario-status {
+  border-color: rgba(63, 111, 203, 0.10);
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(59, 75, 103, 0.82);
+}
+
+html[data-theme="light"] body.panel-page .routing-scenario-status.is-success {
+  border-color: rgba(22, 163, 74, 0.20);
+  color: #166534;
+}
+
+html[data-theme="light"] body.panel-page .routing-scenario-status.is-warning {
+  border-color: rgba(217, 119, 6, 0.22);
+  color: #92400e;
+}
+
+html[data-theme="light"] body.panel-page .routing-scenario-status.is-error {
+  border-color: rgba(220, 38, 38, 0.20);
+  color: #991b1b;
 }
 
 html[data-theme="light"] body.panel-page .routing-side-card .links a {
