@@ -49,6 +49,75 @@ function isPlainObject(value) {
   return !!(value && typeof value === 'object' && !Array.isArray(value));
 }
 
+function cleanScenarioString(value) {
+  return String(value == null ? '' : value).trim();
+}
+
+function cleanScenarioStringList(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  const seen = new Set();
+  value.forEach((item) => {
+    const text = cleanScenarioString(item);
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    out.push(text);
+  });
+  return out;
+}
+
+function readScenarioListField(item, keys) {
+  if (!isPlainObject(item)) return [];
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    if (Object.prototype.hasOwnProperty.call(item, key)) {
+      return cleanScenarioStringList(item[key]);
+    }
+  }
+  return [];
+}
+
+function readScenarioBoolField(item, keys, fallback) {
+  if (!isPlainObject(item)) return !!fallback;
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+    if (Object.prototype.hasOwnProperty.call(item, key)) return !!item[key];
+  }
+  return !!fallback;
+}
+
+function scenarioSelectorMatchesTag(selector, tag) {
+  const token = cleanScenarioString(selector);
+  const value = cleanScenarioString(tag);
+  return !!(token && value && (value === token || value.startsWith(token)));
+}
+
+function subscriptionMatchesScenarioSelector(item, selector) {
+  if (!isPlainObject(item)) return false;
+  const token = cleanScenarioString(selector);
+  if (!token) return false;
+  const tokenLower = token.toLowerCase();
+  const identity = [
+    item.id,
+    item.tag,
+    item.name,
+  ].map((value) => cleanScenarioString(value).toLowerCase()).filter(Boolean);
+  if (identity.includes(tokenLower)) return true;
+  const selectorTerms = readScenarioListField(item, ['last_selector_terms', 'lastSelectorTerms']);
+  if (selectorTerms.includes(token)) return true;
+  const tags = readScenarioListField(item, ['last_tags', 'lastTags']);
+  return tags.some((tag) => scenarioSelectorMatchesTag(token, tag));
+}
+
+function subscriptionScenarioLabel(item) {
+  if (!isPlainObject(item)) return '';
+  return cleanScenarioString(item.name) || cleanScenarioString(item.tag) || cleanScenarioString(item.id);
+}
+
+function subscriptionRoutingAutoRuleEnabled(item) {
+  return readScenarioBoolField(item, ['routing_auto_rule', 'routingAutoRule'], true);
+}
+
 function normalizeMode(mode) {
   const text = String(mode || '').trim().toLowerCase();
   return text === ROUTING_SCENARIO_MOBILE_WHITELIST ? ROUTING_SCENARIO_MOBILE_WHITELIST : ROUTING_SCENARIO_NORMAL;
@@ -220,6 +289,83 @@ export function applyRoutingScenarioText(text, mode) {
   };
 }
 
+export function analyzeRoutingScenarioPreflight(input = {}) {
+  const selector = cleanScenarioString(input.selector || ROUTING_SCENARIO_MOBILE_SELECTOR);
+  const outboundTags = Array.isArray(input.outboundTags) ? cleanScenarioStringList(input.outboundTags) : null;
+  const subscriptions = Array.isArray(input.subscriptions) ? input.subscriptions.filter(isPlainObject) : null;
+  const matchingOutboundTags = outboundTags
+    ? outboundTags.filter((tag) => scenarioSelectorMatchesTag(selector, tag))
+    : [];
+  const matchingSubscriptions = subscriptions
+    ? subscriptions.filter((item) => subscriptionMatchesScenarioSelector(item, selector))
+    : [];
+  const autoRuleSubscriptions = matchingSubscriptions.filter(subscriptionRoutingAutoRuleEnabled);
+
+  return {
+    selector,
+    tagsChecked: Array.isArray(outboundTags),
+    subscriptionsChecked: Array.isArray(subscriptions),
+    matchingOutboundTags,
+    outboundCount: matchingOutboundTags.length,
+    matchingSubscriptions: matchingSubscriptions.map((item) => ({
+      id: cleanScenarioString(item.id),
+      tag: cleanScenarioString(item.tag),
+      name: cleanScenarioString(item.name),
+      label: subscriptionScenarioLabel(item),
+      routingAutoRule: subscriptionRoutingAutoRuleEnabled(item),
+    })),
+    autoRuleSubscriptions: autoRuleSubscriptions.map((item) => ({
+      id: cleanScenarioString(item.id),
+      tag: cleanScenarioString(item.tag),
+      name: cleanScenarioString(item.name),
+      label: subscriptionScenarioLabel(item),
+    })),
+  };
+}
+
+export function formatRoutingScenarioPreflightMessage(preflight) {
+  const data = isPlainObject(preflight) ? preflight : {};
+  const selector = cleanScenarioString(data.selector || ROUTING_SCENARIO_MOBILE_SELECTOR);
+  const parts = [];
+  let tone = 'success';
+
+  if (data.tagsChecked) {
+    const count = Number(data.outboundCount || 0);
+    if (count > 0) {
+      parts.push(`Пул ${selector} найден: ${count} outbound.`);
+    } else {
+      parts.push(`Пул ${selector} не найден. Сначала обновите подписку/профиль ${selector}.`);
+      tone = 'error';
+    }
+  } else {
+    parts.push(`Не удалось проверить пул ${selector}: список outbound недоступен.`);
+    tone = 'warning';
+  }
+
+  if (data.subscriptionsChecked) {
+    const autoRule = Array.isArray(data.autoRuleSubscriptions) ? data.autoRuleSubscriptions : [];
+    const matching = Array.isArray(data.matchingSubscriptions) ? data.matchingSubscriptions : [];
+    if (autoRule.length) {
+      const labels = autoRule.map((item) => cleanScenarioString(item.label || item.tag || item.id)).filter(Boolean);
+      parts.push(`У профиля ${labels.join(', ') || selector} включено авто-правило routing; для этого сценария лучше выключить.`);
+      if (tone !== 'error') tone = 'warning';
+    } else if (matching.length) {
+      parts.push('Авто-routing подписки выключен.');
+    } else {
+      parts.push(`Профиль ${selector} в подписках не найден; проверяю только outbound-теги.`);
+      if (tone !== 'error') tone = 'warning';
+    }
+  } else if (tone !== 'error') {
+    parts.push('Не удалось проверить настройки подписки.');
+    tone = 'warning';
+  }
+
+  return {
+    message: parts.join(' '),
+    tone,
+  };
+}
+
 export const routingScenarios = Object.freeze({
   normal: ROUTING_SCENARIO_NORMAL,
   mobileWhitelist: ROUTING_SCENARIO_MOBILE_WHITELIST,
@@ -228,4 +374,6 @@ export const routingScenarios = Object.freeze({
   mobileSelector: ROUTING_SCENARIO_MOBILE_SELECTOR,
   applyText: applyRoutingScenarioText,
   detectText: detectRoutingScenarioFromText,
+  analyzePreflight: analyzeRoutingScenarioPreflight,
+  formatPreflightMessage: formatRoutingScenarioPreflightMessage,
 });

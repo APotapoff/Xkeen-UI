@@ -74,6 +74,58 @@ console.log(JSON.stringify({
     assert payload["firstBalancer"]["fallbackTag"] == "block"
 
 
+def test_mobile_whitelist_preflight_reports_pool_and_subscription_risks():
+    payload = _run_node_json(
+        """
+import {
+  analyzeRoutingScenarioPreflight,
+  formatRoutingScenarioPreflightMessage,
+} from './xkeen-ui/static/js/ui/routing_scenarios.js';
+
+const ready = analyzeRoutingScenarioPreflight({
+  outboundTags: ['direct', 'white_list--A', 'white_list--B'],
+  subscriptions: [
+    { id: 'white_list', tag: 'white_list', routing_auto_rule: false, last_tags: ['white_list--A'] },
+  ],
+});
+const risky = analyzeRoutingScenarioPreflight({
+  outboundTags: ['white_list--A'],
+  subscriptions: [
+    { id: 'white_list', tag: 'white_list', routing_auto_rule: true, last_tags: ['white_list--A'] },
+  ],
+});
+const missing = analyzeRoutingScenarioPreflight({
+  outboundTags: ['direct', 'main_vps'],
+  subscriptions: [],
+});
+
+console.log(JSON.stringify({
+  ready,
+  readyMessage: formatRoutingScenarioPreflightMessage(ready),
+  risky,
+  riskyMessage: formatRoutingScenarioPreflightMessage(risky),
+  missing,
+  missingMessage: formatRoutingScenarioPreflightMessage(missing),
+}));
+"""
+    )
+
+    assert payload["ready"]["outboundCount"] == 2
+    assert payload["ready"]["autoRuleSubscriptions"] == []
+    assert payload["readyMessage"]["tone"] == "success"
+    assert "Пул white_list найден: 2 outbound." in payload["readyMessage"]["message"]
+    assert "Авто-routing подписки выключен." in payload["readyMessage"]["message"]
+
+    assert payload["risky"]["outboundCount"] == 1
+    assert payload["risky"]["autoRuleSubscriptions"][0]["tag"] == "white_list"
+    assert payload["riskyMessage"]["tone"] == "warning"
+    assert "авто-правило routing" in payload["riskyMessage"]["message"]
+
+    assert payload["missing"]["outboundCount"] == 0
+    assert payload["missingMessage"]["tone"] == "error"
+    assert "Пул white_list не найден" in payload["missingMessage"]["message"]
+
+
 def test_normal_scenario_removes_only_managed_mobile_whitelist_block():
     payload = _run_node_json(
         """
@@ -127,6 +179,10 @@ def test_routing_scenario_switcher_is_wired_into_panel():
     assert "applyRoutingScenarioText" in routing_src
     assert "function wireRoutingScenarioSwitcher()" in routing_src
     assert "function wireRoutingScenarioCollapse()" in routing_src
+    assert "function loadRoutingScenarioPreflight(options)" in routing_src
+    assert "'/api/xray/outbound-tags?all=1'" in routing_src
+    assert "'/api/xray/subscriptions'" in routing_src
+    assert "formatRoutingScenarioPreflightMessage(preflight)" in routing_src
     assert "xk.routing.scenario.open.v1" in routing_src
     assert "ROUTING_SCENARIO_MOBILE_BALANCER_TAG" in routing_src
     assert "xkeen:routing-editor-content" in routing_src

@@ -38,8 +38,10 @@ import {
   ROUTING_SCENARIO_MOBILE_SELECTOR,
   ROUTING_SCENARIO_MOBILE_WHITELIST,
   ROUTING_SCENARIO_NORMAL,
+  analyzeRoutingScenarioPreflight,
   applyRoutingScenarioText,
   detectRoutingScenarioFromText,
+  formatRoutingScenarioPreflightMessage,
 } from '../ui/routing_scenarios.js';
 import { applySchemaToEditor, resolveEditorSnippetProvider } from '../ui/editor_schema.js';
 import { validateXrayRoutingSemantics } from '../ui/schema_semantic_validation.js';
@@ -442,6 +444,10 @@ import { createXrayQuickFixProvider } from '../ui/schema_quickfixes.js';
   const ROUTING_SCENARIO_OPEN_KEY = 'xk.routing.scenario.open.v1';
   let _routingScenarioCollapseWired = false;
   let _routingScenarioWired = false;
+  let _routingScenarioPreflightSeq = 0;
+  let _routingScenarioPreflightCache = null;
+  let _routingScenarioPreflightPromise = null;
+  let _routingScenarioPreflightTs = 0;
 
   function getRoutingShellApi() {
     const api = getRoutingShellModuleApi();
@@ -4261,6 +4267,69 @@ function closeHelp() {
     _routingScenarioCollapseWired = true;
   }
 
+  async function fetchRoutingScenarioJson(url) {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) return null;
+      const payload = await response.json().catch(() => null);
+      return payload && typeof payload === 'object' ? payload : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function fetchRoutingScenarioOutboundTags() {
+    const payload = await fetchRoutingScenarioJson('/api/xray/outbound-tags?all=1');
+    return payload && Array.isArray(payload.tags) ? payload.tags.slice() : null;
+  }
+
+  async function fetchRoutingScenarioSubscriptions() {
+    const payload = await fetchRoutingScenarioJson('/api/xray/subscriptions');
+    return payload && Array.isArray(payload.subscriptions) ? payload.subscriptions.slice() : null;
+  }
+
+  async function loadRoutingScenarioPreflight(options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const now = Date.now();
+    if (!opts.force && _routingScenarioPreflightCache && (now - _routingScenarioPreflightTs) < 15000) {
+      return _routingScenarioPreflightCache;
+    }
+    if (!opts.force && _routingScenarioPreflightPromise) return _routingScenarioPreflightPromise;
+
+    _routingScenarioPreflightPromise = Promise.allSettled([
+      fetchRoutingScenarioOutboundTags(),
+      fetchRoutingScenarioSubscriptions(),
+    ]).then(([tagsResult, subscriptionsResult]) => {
+      const preflight = analyzeRoutingScenarioPreflight({
+        selector: ROUTING_SCENARIO_MOBILE_SELECTOR,
+        outboundTags: tagsResult.status === 'fulfilled' ? tagsResult.value : null,
+        subscriptions: subscriptionsResult.status === 'fulfilled' ? subscriptionsResult.value : null,
+      });
+      _routingScenarioPreflightCache = preflight;
+      _routingScenarioPreflightTs = Date.now();
+      return preflight;
+    }).finally(() => {
+      _routingScenarioPreflightPromise = null;
+    });
+
+    return _routingScenarioPreflightPromise;
+  }
+
+  async function updateRoutingScenarioPreflightStatus(options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const seq = ++_routingScenarioPreflightSeq;
+    if (opts.loading !== false && selectedRoutingScenarioMode() === ROUTING_SCENARIO_MOBILE_WHITELIST) {
+      setRoutingScenarioStatus(`Проверяю пул ${ROUTING_SCENARIO_MOBILE_SELECTOR} и настройки подписки…`, 'warning');
+    }
+
+    const preflight = await loadRoutingScenarioPreflight({ force: !!opts.force });
+    if (seq === _routingScenarioPreflightSeq && selectedRoutingScenarioMode() === ROUTING_SCENARIO_MOBILE_WHITELIST) {
+      const formatted = formatRoutingScenarioPreflightMessage(preflight);
+      setRoutingScenarioStatus(formatted.message, formatted.tone);
+    }
+    return preflight;
+  }
+
   function selectedRoutingScenarioMode() {
     const normal = $(IDS.scenarioNormal);
     const mobile = $(IDS.scenarioMobile);
@@ -4312,6 +4381,7 @@ function closeHelp() {
         `Активен аварийный режим: Россия идёт напрямую, остальное через ${ROUTING_SCENARIO_MOBILE_SELECTOR}.`,
         'success'
       );
+      void updateRoutingScenarioPreflightStatus({ loading: false });
       return;
     }
 
@@ -4336,7 +4406,17 @@ function closeHelp() {
     const mode = selectedRoutingScenarioMode();
     const raw = getEditorText();
     const modeLabel = routingScenarioLabel(mode);
-    const details = mode === ROUTING_SCENARIO_MOBILE_WHITELIST
+    let preflight = null;
+    if (mode === ROUTING_SCENARIO_MOBILE_WHITELIST) {
+      preflight = await updateRoutingScenarioPreflightStatus({ loading: true, force: true });
+      if (preflight && preflight.tagsChecked && Number(preflight.outboundCount || 0) <= 0) {
+        const formatted = formatRoutingScenarioPreflightMessage(preflight);
+        setRoutingScenarioStatus(formatted.message, 'error');
+        return false;
+      }
+    }
+
+    let details = mode === ROUTING_SCENARIO_MOBILE_WHITELIST
       ? [
           `Будет создан balancer ${ROUTING_SCENARIO_MOBILE_BALANCER_TAG} с selector ${ROUTING_SCENARIO_MOBILE_SELECTOR}.`,
           'В начало rules будет добавлен direct для РФ и catch-all на anti white-list пул.',
@@ -4346,6 +4426,10 @@ function closeHelp() {
           'Управляемый аварийный white-list блок будет удалён.',
           'Остальные правила и balancer-ы routing-файла останутся как есть.',
         ];
+    if (preflight && mode === ROUTING_SCENARIO_MOBILE_WHITELIST) {
+      const formatted = formatRoutingScenarioPreflightMessage(preflight);
+      details = details.concat([formatted.message]);
+    }
 
     const ok = await confirmXkeenAction({
       title: 'Применить сценарий маршрутизации?',
@@ -4401,12 +4485,15 @@ function closeHelp() {
     [normal, mobile].forEach((input) => {
       if (!input || (input.dataset && input.dataset.xkScenarioWired === '1')) return;
       input.addEventListener('change', () => {
-        setRoutingScenarioStatus(
-          selectedRoutingScenarioMode() === ROUTING_SCENARIO_MOBILE_WHITELIST
-            ? `Выбран аварийный режим: после применения весь не-RU трафик пойдёт через ${ROUTING_SCENARIO_MOBILE_SELECTOR}.`
-            : 'Выбран обычный режим: после применения аварийный white-list блок будет убран.',
-          'warning'
-        );
+        if (selectedRoutingScenarioMode() === ROUTING_SCENARIO_MOBILE_WHITELIST) {
+          setRoutingScenarioStatus(
+            `Выбран аварийный режим: после применения весь не-RU трафик пойдёт через ${ROUTING_SCENARIO_MOBILE_SELECTOR}.`,
+            'warning'
+          );
+          void updateRoutingScenarioPreflightStatus({ loading: true, force: true });
+          return;
+        }
+        setRoutingScenarioStatus('Выбран обычный режим: после применения аварийный white-list блок будет убран.', 'warning');
       });
       if (input.dataset) input.dataset.xkScenarioWired = '1';
     });
