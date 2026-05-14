@@ -25461,12 +25461,35 @@ body.panel-page .routing-scenario-options {
 }
 
 body.panel-page .routing-scenario-help-row {
-  margin: 0 0 12px;
+  display: flex;
+  justify-content: flex-start;
+  margin: 0 0 14px;
 }
 
 body.panel-page .routing-scenario-help-popover .xk-card-help-trigger {
-  min-height: 32px;
-  padding: 6px 10px;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+body.panel-page .routing-scenario-help-popover .xk-card-help-label {
+  display: none;
+}
+
+body.panel-page .routing-scenario-help-popover .xk-card-help-icon {
+  width: auto;
+  height: auto;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1;
+}
+
+body.panel-page .routing-scenario-help-panel {
+  margin-bottom: 14px;
 }
 
 body.panel-page .routing-scenario-help-panel ul {
