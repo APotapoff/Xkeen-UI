@@ -134,3 +134,13 @@ def test_routing_scenario_switcher_is_wired_into_panel():
     assert "body.panel-page .routing-side-card--scenario" in styles
     assert "body.panel-page .routing-side-card--scenario .commands-header h2" in styles
     assert ".routing-scenario-status.is-success" in styles
+
+
+def test_routing_dat_card_uses_shared_sidebar_collapse_style():
+    template = (ROOT / "xkeen-ui/templates/panel.html").read_text(encoding="utf-8")
+    styles = (ROOT / "xkeen-ui/static/styles.css").read_text(encoding="utf-8")
+
+    assert 'class="card routing-dat-card routing-side-card"' in template
+    assert 'id="routing-dat-arrow"' in template
+    assert "body.panel-page .routing-side-card .commands-header h2" in styles
+    assert "body.panel-page .routing-side-card .commands-header > span:last-child" in styles
