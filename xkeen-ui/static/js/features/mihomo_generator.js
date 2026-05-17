@@ -197,6 +197,7 @@ let mihomoGeneratorModuleApi = null;
         // Bulk import modal
         const bulkImportModal = document.getElementById("bulkImportModal");
         const bulkImportTextarea = document.getElementById("bulkImportTextarea");
+        const bulkImportSummary = document.getElementById("bulkImportSummary");
         const bulkImportClearExisting = document.getElementById("bulkImportClearExisting");
         const bulkImportToSubscriptions = document.getElementById("bulkImportToSubscriptions");
         const bulkImportDedup = document.getElementById("bulkImportDedup");
@@ -207,7 +208,6 @@ let mihomoGeneratorModuleApi = null;
         const bulkImportApplyBtn = document.getElementById("bulkImportApplyBtn");
         const bulkImportOverwriteName = document.getElementById("bulkImportOverwriteName");
         const bulkImportOverwriteGroups = document.getElementById("bulkImportOverwriteGroups");
-        const bulkImportApplyExistingBtn = document.getElementById("bulkImportApplyExistingBtn");
 
         // Unified premium result modal (preview / validate / apply)
         const mihomoResultModal = document.getElementById("mihomoResultModal");
@@ -2565,6 +2565,11 @@ function initEngineToggle() {
             .trim();
         }
 
+        function isIgnorableBulkImportLine(line) {
+          const raw = normalizeImportedLine(line);
+          return !raw || raw.startsWith("#");
+        }
+
         function safeDecodeURIComponent(s) {
           try { return decodeURIComponent(s); } catch (e) { return s; }
         }
@@ -3134,6 +3139,94 @@ function initEngineToggle() {
           return added;
         }
 
+        function analyzeBulkImportText(text, opts) {
+          const options = opts || getBulkImportOptions();
+          const dedup = !!options.dedup;
+          const nameTemplate = options.nameTemplate;
+          const groupsTemplate = options.groupsTemplate;
+          const autoGeo = !!options.autoGeo;
+          const autoRegionGroup = !!options.autoRegionGroup;
+
+          const subs = [];
+          const proxies = [];
+          const unknown = [];
+          let duplicates = 0;
+          let subscriptionLines = 0;
+
+          const existingSubs = new Set(getExistingSubscriptionUrls().map(s => String(s).trim()));
+          const existingLinks = options.clearExisting
+            ? new Set()
+            : new Set(getExistingProxyLinks().map(s => String(s).trim()));
+          const localSeen = new Set();
+
+          let proxyIdx = 0;
+          String(text || "").replace(/\r\n/g, "\n").split("\n").forEach((line) => {
+            if (isIgnorableBulkImportLine(line)) return;
+
+            const parsed = parseImportLine(line);
+            if (!parsed) {
+              unknown.push(normalizeImportedLine(line));
+              return;
+            }
+
+            if (parsed.type === 'subscription') {
+              subscriptionLines += 1;
+              const key = String(parsed.url).trim();
+              if (dedup && (existingSubs.has(key) || localSeen.has(key))) {
+                duplicates += 1;
+                return;
+              }
+              localSeen.add(key);
+              subs.push(key);
+              return;
+            }
+
+            if (parsed.type === 'proxy') {
+              const key = String(parsed.data).trim();
+              if (dedup && (existingLinks.has(key) || localSeen.has(key))) {
+                duplicates += 1;
+                return;
+              }
+              localSeen.add(key);
+              proxyIdx += 1;
+              proxies.push(buildImportedProxy(parsed, proxyIdx, { nameTemplate, groupsTemplate, autoGeo, autoRegionGroup }));
+              return;
+            }
+
+            unknown.push(normalizeImportedLine(line));
+          });
+
+          return { subs, proxies, unknown, duplicates, subscriptionLines };
+        }
+
+        function updateBulkImportSummary() {
+          if (!bulkImportSummary) return;
+          const text = bulkImportTextarea ? String(bulkImportTextarea.value || "") : "";
+          const opts = getBulkImportOptions();
+          const hasMeaningfulText = text.split(/\r?\n/).some((line) => !isIgnorableBulkImportLine(line));
+
+          if (!hasMeaningfulText) {
+            bulkImportSummary.textContent = "Вставьте список, чтобы увидеть сводку импорта.";
+            bulkImportSummary.classList.remove("is-warning");
+            return;
+          }
+
+          const result = analyzeBulkImportText(text, opts);
+          const importableSubs = opts.toSubs ? result.subs.length : 0;
+          const importableTotal = result.proxies.length + importableSubs;
+          const parts = [
+            `Будет добавлено: узлов ${result.proxies.length}, подписок ${importableSubs}.`,
+          ];
+          if (!opts.toSubs && result.subscriptionLines) {
+            parts.push(`HTTPS-строк найдено: ${result.subscriptionLines}, добавление в подписки выключено.`);
+          }
+          if (result.duplicates) parts.push(`Дубли будут пропущены: ${result.duplicates}.`);
+          if (result.unknown.length) parts.push(`Не распознано строк: ${result.unknown.length}.`);
+
+          bulkImportSummary.textContent = parts.join(" ");
+          bulkImportSummary.classList.toggle("is-warning", importableTotal === 0 || result.unknown.length > 0);
+        }
+
         function doBulkImport() {
           if (!bulkImportTextarea) return;
           const text = String(bulkImportTextarea.value || "");
@@ -3141,47 +3234,22 @@ function initEngineToggle() {
           const clearExisting = opts.clearExisting;
           const toSubs = opts.toSubs;
           const dedup = opts.dedup;
-          const nameTemplate = opts.nameTemplate;
-          const groupsTemplate = opts.groupsTemplate;
-          const autoGeo = opts.autoGeo;
-          const autoRegionGroup = opts.autoRegionGroup;
+          const analysis = analyzeBulkImportText(text, opts);
+          const subs = analysis.subs;
+          const proxies = analysis.proxies;
+          const unknown = analysis.unknown;
+          const duplicates = analysis.duplicates;
 
-          const lines = text.replace(/\r\n/g, "\n").split("\n");
-          const subs = [];
-          const proxies = [];
-          const unknown = [];
-
-          const existingSubs = new Set(getExistingSubscriptionUrls().map(s => String(s).trim()));
-          const existingLinks = new Set(getExistingProxyLinks().map(s => String(s).trim()));
-          const localSeen = new Set();
-
-          let proxyIdx = 0;
-          lines.forEach((line) => {
-            const parsed = parseImportLine(line);
-            if (!parsed) return;
-
-            if (parsed.type === 'subscription') {
-              const key = String(parsed.url).trim();
-              if (dedup && (existingSubs.has(key) || localSeen.has(key))) return;
-              localSeen.add(key);
-              subs.push(key);
-              return;
+          if (!proxies.length && !(toSubs && subs.length)) {
+            let msg = "Не нашёл валидных строк для импорта.";
+            if (analysis.subscriptionLines && !toSubs) {
+              msg = "Найдены только HTTPS-строки, но добавление в «Подписки» выключено.";
+            } else if (duplicates && !unknown.length) {
+              msg = "Новые строки не найдены: всё уже есть в списке.";
             }
-            if (parsed.type === 'proxy') {
-              const key = String(parsed.data).trim();
-              if (dedup && (existingLinks.has(key) || localSeen.has(key))) return;
-              localSeen.add(key);
-              proxyIdx += 1;
-              proxies.push(buildImportedProxy(parsed, proxyIdx, { nameTemplate, groupsTemplate, autoGeo, autoRegionGroup }));
-              return;
-            }
-
-            unknown.push(String(line || "").trim());
-          });
-
-          if (!subs.length && !proxies.length) {
-            setStatus("Не нашёл валидных строк для импорта.", "err");
-            try { toast("Не нашёл валидных строк для импорта.", 'error'); } catch (e) {}
+            setStatus(msg, "err");
+            try { toast(msg, 'error'); } catch (e) {}
+            updateBulkImportSummary();
             return;
           }
 
@@ -3210,10 +3278,13 @@ function initEngineToggle() {
 
           // Clear textarea for convenience
           try { bulkImportTextarea.value = ""; } catch (e) {}
+          updateBulkImportSummary();
           hideBulkImportModal();
 
           const msg = `Импортировано: узлов ${addedProxies}` + (toSubs ? `, подписок ${addedSubs}` : "") + ".";
-          const finalMsg = unknown.length ? (msg + ` Не распознано строк: ${unknown.length}.`) : msg;
+          let finalMsg = msg;
+          if (duplicates) finalMsg += ` Дубли пропущены: ${duplicates}.`;
+          if (unknown.length) finalMsg += ` Не распознано строк: ${unknown.length}.`;
           setStatus(finalMsg, "ok");
           try { toast(finalMsg, unknown.length ? 'info' : 'success'); } catch (e) {}
 
@@ -4188,6 +4259,7 @@ function initEngineToggle() {
         function showBulkImportModal() {
           const modal = bulkImportModal || document.getElementById("bulkImportModal");
           if (!modal) return;
+          updateBulkImportSummary();
           modal.classList.remove("hidden");
           document.body.classList.add("modal-open");
           try {
@@ -4205,6 +4277,24 @@ function initEngineToggle() {
         window.showBulkImportModal = showBulkImportModal;
         window.hideBulkImportModal = hideBulkImportModal;
         wireDismissableModal(bulkImportModal, '[data-dismiss="bulk-import"]', hideBulkImportModal);
+
+        function wireBulkImportSummaryUpdates() {
+          const bind = (el, eventName) => {
+            if (!el) return;
+            try { el.addEventListener(eventName, updateBulkImportSummary); } catch (e) {}
+          };
+
+          bind(bulkImportTextarea, "input");
+          bind(bulkImportTextarea, "change");
+          bind(bulkImportToSubscriptions, "change");
+          bind(bulkImportDedup, "change");
+          bind(bulkImportClearExisting, "change");
+          bind(bulkImportAutoGeo, "change");
+          bind(bulkImportAutoRegionGroup, "change");
+          bind(bulkImportNameTemplate, "input");
+          bind(bulkImportGroupsTemplate, "input");
+          updateBulkImportSummary();
+        }
 
         document.addEventListener('keydown', (ev) => {
           try {
@@ -4748,7 +4838,7 @@ function initEngineToggle() {
         if (reloadManagedSubscriptionsBtn) reloadManagedSubscriptionsBtn.onclick = () => loadManagedSubscriptions(false);
         if (refreshManagedDueBtn) refreshManagedDueBtn.onclick = () => refreshManagedDueSubscriptions();
         if (bulkImportApplyBtn) bulkImportApplyBtn.onclick = () => doBulkImport();
-        if (bulkImportApplyExistingBtn) bulkImportApplyExistingBtn.onclick = () => applyTemplatesToExistingProxies();
+        wireBulkImportSummaryUpdates();
         generateBtn.onclick = () => generatePreviewDemo(true);
         if (resetPreviewBtn) resetPreviewBtn.onclick = () => resetPreviewToDefault();
         saveBtn.onclick = downloadConfig;

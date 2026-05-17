@@ -1534,11 +1534,11 @@
       padding: 10px;
     }
     #bulkImportModal .modal-content {
-      width: min(96vw, 980px);
-      max-width: 980px;
+      width: min(94vw, 860px);
+      max-width: 860px;
       max-height: min(94vh, 980px);
       padding: 12px 14px 14px;
-      border-radius: 24px;
+      border-radius: 18px;
       border-color: rgba(71, 85, 105, 0.82);
       background:
         radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 28%),
@@ -1547,7 +1547,7 @@
       box-shadow:
         0 30px 90px rgba(2, 6, 23, 0.84),
         inset 0 1px 0 rgba(255, 255, 255, 0.045);
-      resize: both;
+      resize: none;
       overflow: auto;
     }
     .bulk-import-modal-header {
@@ -1636,27 +1636,9 @@
       font-size: 13px;
       line-height: 1.5;
     }
-    .bulk-import-lead-badges {
-      margin-top: 10px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    .bulk-import-badge {
-      display: inline-flex;
-      align-items: center;
-      min-height: 28px;
-      padding: 0 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(148, 163, 184, 0.16);
-      background: rgba(2, 6, 23, 0.30);
-      color: #dbeafe;
-      font-size: 11px;
-      font-weight: 700;
-    }
     .bulk-import-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
+      grid-template-columns: minmax(0, 1fr);
       gap: 12px;
       min-height: 0;
     }
@@ -1732,19 +1714,52 @@
       font-weight: 700;
     }
     .bulk-import-hint,
-    .bulk-import-minihelp {
+    .bulk-import-minihelp,
+    .bulk-import-examples {
       color: #94a3b8;
       font-size: 12px;
       line-height: 1.5;
     }
     .bulk-import-hint code,
     .bulk-import-minihelp code,
-    .bulk-import-lead-desc code {
+    .bulk-import-lead-desc code,
+    .bulk-import-examples code {
       color: #dbeafe;
       background: rgba(15, 23, 42, 0.72);
       border: 1px solid rgba(96, 165, 250, 0.14);
       border-radius: 8px;
       padding: 1px 6px;
+    }
+    .bulk-import-summary {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(96, 165, 250, 0.16);
+      background: rgba(15, 23, 42, 0.42);
+      color: #cbd5e1;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .bulk-import-summary.is-warning {
+      border-color: rgba(251, 191, 36, 0.28);
+      color: #fde68a;
+      background: rgba(120, 53, 15, 0.18);
+    }
+    .bulk-import-advanced {
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(2, 6, 23, 0.20);
+      overflow: hidden;
+    }
+    .bulk-import-advanced > summary {
+      cursor: pointer;
+      padding: 10px 12px;
+      color: #dbeafe;
+      font-size: 12px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .bulk-import-advanced-body {
+      padding: 0 10px 10px;
     }
     .bulk-import-option-row,
     .bulk-import-check-grid {
@@ -1846,7 +1861,6 @@
     html[data-theme="light"] .bulk-import-modal-kicker,
     html[data-theme="light"] .bulk-import-panel-meta,
     html[data-theme="light"] .bulk-import-chip,
-    html[data-theme="light"] .bulk-import-badge,
     html[data-theme="light"] .bulk-import-check {
       background: rgba(239,246,255,0.92);
       border-color: rgba(96,165,250,0.18);
@@ -1856,13 +1870,16 @@
     html[data-theme="light"] .bulk-import-lead-desc,
     html[data-theme="light"] .bulk-import-hint,
     html[data-theme="light"] .bulk-import-minihelp,
+    html[data-theme="light"] .bulk-import-examples,
     html[data-theme="light"] .bulk-import-card-subtitle,
     html[data-theme="light"] .bulk-import-actions-note {
       color: #475569;
     }
     html[data-theme="light"] .bulk-import-lead,
     html[data-theme="light"] .bulk-import-panel,
-    html[data-theme="light"] .bulk-import-card {
+    html[data-theme="light"] .bulk-import-card,
+    html[data-theme="light"] .bulk-import-summary,
+    html[data-theme="light"] .bulk-import-advanced {
       background: rgba(248,250,252,0.96);
       border-color: rgba(148,163,184,0.16);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 10px 22px rgba(15,23,42,0.06);
@@ -1884,10 +1901,14 @@
     }
     html[data-theme="light"] .bulk-import-hint code,
     html[data-theme="light"] .bulk-import-minihelp code,
-    html[data-theme="light"] .bulk-import-lead-desc code {
+    html[data-theme="light"] .bulk-import-lead-desc code,
+    html[data-theme="light"] .bulk-import-examples code {
       color: #1e3a8a;
       background: rgba(239,246,255,0.92);
       border-color: rgba(96,165,250,0.16);
+    }
+    html[data-theme="light"] .bulk-import-advanced > summary {
+      color: #1e3a8a;
     }
 
     @media (max-width: 1040px) {
@@ -2248,7 +2269,7 @@
         <div class="bulk-import-modal-kicker">Mihomo / bulk import</div>
         <span class="modal-title">Импорт узлов и подписок</span>
         <div class="bulk-import-modal-subtitle">
-          Быстрый импорт ссылок, HTTPS-подписок и шаблонов именования без ручного заполнения каждой карточки.
+          Быстрый импорт ссылок и HTTPS-подписок без ручного заполнения каждой карточки.
         </div>
       </div>
       <button type="button" class="modal-close" data-dismiss="bulk-import">×</button>
@@ -2259,16 +2280,9 @@
         <div class="bulk-import-lead-text">
           <div class="bulk-import-lead-title">Вставьте список строк — генератор сам разберёт формат</div>
           <p class="bulk-import-lead-desc">
-            Поддерживаются <code>vless://</code>, <code>trojan://</code>, <code>vmess://</code>, <code>ss://</code>, <code>hysteria2://</code>, <code>hy2://</code> и <code>https://</code>.
+            Поддерживаются <code>vless://</code>, <code>trojan://</code>, <code>vmess://</code>, <code>ss://</code>, <code>hysteria2://</code>, <code>hy2://</code>, <code>tailscale://</code> и <code>https://</code>.
             Комментарии с <code>#</code> и пустые строки игнорируются.
           </p>
-          <div class="bulk-import-lead-badges">
-            <span class="bulk-import-badge">link</span>
-            <span class="bulk-import-badge">name|link</span>
-            <span class="bulk-import-badge">name|link|groups</span>
-            <span class="bulk-import-badge">groups|link</span>
-            <span class="bulk-import-badge">name|groups|link</span>
-          </div>
         </div>
       </div>
 
@@ -2281,7 +2295,8 @@
 
           <textarea id="bulkImportTextarea" class="bulk-import-textarea" rows="10" placeholder="vless://...
 https://sub.example.com/...
-trojan://..."></textarea>
+trojan://...
+My node | vless://... | YouTube,HK"></textarea>
 
           <div class="bulk-import-supported">
             <span class="bulk-import-chip">vless://</span>
@@ -2289,94 +2304,79 @@ trojan://..."></textarea>
             <span class="bulk-import-chip">vmess://</span>
             <span class="bulk-import-chip">ss://</span>
             <span class="bulk-import-chip">hysteria2://</span>
+            <span class="bulk-import-chip">hy2://</span>
+            <span class="bulk-import-chip">tailscale://</span>
             <span class="bulk-import-chip">https://</span>
           </div>
 
-          <div class="bulk-import-hint">
-            Подсказка: группы можно указывать через запятую или точку с запятой, например <code>HK,SG</code> или <code>HK;SG</code>.
+          <div class="bulk-import-examples">
+            Примеры строк: <code>link</code>, <code>name | link</code>, <code>name | link | group1,group2</code>.
           </div>
 
           <div class="bulk-import-option-row">
             <label class="bulk-import-check">
-              <input id="bulkImportClearExisting" type="checkbox">
-              Очистить текущие узлы перед импортом
-            </label>
-            <label class="bulk-import-check">
               <input id="bulkImportToSubscriptions" type="checkbox" checked>
-              HTTPS добавлять в «Подписки»
+              HTTPS-строки добавлять в «Подписки»
             </label>
             <label class="bulk-import-check">
               <input id="bulkImportDedup" type="checkbox" checked>
               Игнорировать дубли
             </label>
+            <label class="bulk-import-check">
+              <input id="bulkImportClearExisting" type="checkbox">
+              Очистить текущие узлы перед импортом
+            </label>
           </div>
-        </section>
 
-        <section class="bulk-import-panel bulk-import-panel--options">
-          <div class="bulk-import-subgrid">
-            <div class="bulk-import-card">
-              <div class="bulk-import-card-head">
-                <div>
-                  <div class="bulk-import-card-title">Шаблоны заполнения</div>
-                  <div class="bulk-import-card-subtitle">Позволяют сразу нормализовать имена и группы у импортируемых узлов.</div>
+          <details class="bulk-import-advanced">
+            <summary>Дополнительно: шаблоны и GEO</summary>
+            <div class="bulk-import-advanced-body">
+              <div class="bulk-import-subgrid">
+                <div class="bulk-import-card">
+                  <div class="bulk-import-card-head">
+                    <div>
+                      <div class="bulk-import-card-title">Шаблоны заполнения</div>
+                      <div class="bulk-import-card-subtitle">Для случаев, когда нужно сразу привести имена или группы к своему формату.</div>
+                    </div>
+                  </div>
+                  <div class="bulk-import-field-grid">
+                    <div>
+                      <label for="bulkImportNameTemplate" class="bulk-import-field-label">Шаблон имени</label>
+                      <input id="bulkImportNameTemplate" type="text" class="input" placeholder="{name}" value="{name}">
+                    </div>
+                    <div>
+                      <label for="bulkImportGroupsTemplate" class="bulk-import-field-label">Шаблон групп</label>
+                      <input id="bulkImportGroupsTemplate" type="text" class="input" placeholder="например: {geo},Заблок. сервисы">
+                    </div>
+                  </div>
+                  <div class="bulk-import-minihelp">
+                    Переменные: <code>{name}</code>, <code>{type}</code>, <code>{host}</code>, <code>{port}</code>, <code>{geo}</code>, <code>{flag}</code>, <code>{region}</code>, <code>{region_group}</code>, <code>{group}</code>, <code>{groups}</code>, <code>{tags}</code>, <code>{index}</code>
+                  </div>
                 </div>
-              </div>
-              <div class="bulk-import-field-grid">
-                <div>
-                  <label for="bulkImportNameTemplate" class="bulk-import-field-label">Шаблон имени</label>
-                  <input id="bulkImportNameTemplate" type="text" class="input" placeholder="{name}" value="{name}">
+
+                <div class="bulk-import-card">
+                  <div class="bulk-import-card-head">
+                    <div>
+                      <div class="bulk-import-card-title">GEO-группы</div>
+                      <div class="bulk-import-card-subtitle">Выключено по умолчанию, чтобы импорт не менял группы неожиданно.</div>
+                    </div>
+                  </div>
+                  <div class="bulk-import-check-grid">
+                    <label class="bulk-import-check">
+                      <input id="bulkImportAutoGeo" type="checkbox">
+                      Определять GEO по имени/хосту
+                    </label>
+                    <label class="bulk-import-check">
+                      <input id="bulkImportAutoRegionGroup" type="checkbox">
+                      Добавлять региональную группу
+                    </label>
+                  </div>
                 </div>
-                <div>
-                  <label for="bulkImportGroupsTemplate" class="bulk-import-field-label">Шаблон групп</label>
-                  <input id="bulkImportGroupsTemplate" type="text" class="input" placeholder="например: {geo},Заблок. сервисы">
-                </div>
-              </div>
-              <div class="bulk-import-minihelp">
-                Переменные: <code>{name}</code>, <code>{type}</code>, <code>{host}</code>, <code>{port}</code>, <code>{geo}</code>, <code>{flag}</code>, <code>{region}</code>, <code>{region_group}</code>, <code>{group}</code>, <code>{groups}</code>, <code>{tags}</code>, <code>{index}</code>
               </div>
             </div>
+          </details>
 
-            <div class="bulk-import-card">
-              <div class="bulk-import-card-head">
-                <div>
-                  <div class="bulk-import-card-title">Автоматизация GEO</div>
-                  <div class="bulk-import-card-subtitle">Удобно для быстрых региональных групп без ручной сортировки.</div>
-                </div>
-              </div>
-              <div class="bulk-import-check-grid">
-                <label class="bulk-import-check">
-                  <input id="bulkImportAutoGeo" type="checkbox" checked>
-                  Авто-GEO по имени/хосту
-                </label>
-                <label class="bulk-import-check">
-                  <input id="bulkImportAutoRegionGroup" type="checkbox">
-                  Добавлять региональную группу
-                </label>
-              </div>
-            </div>
-
-            <div class="bulk-import-card">
-              <div class="bulk-import-card-head">
-                <div>
-                  <div class="bulk-import-card-title">Применить шаблоны к уже добавленным узлам</div>
-                  <div class="bulk-import-card-subtitle">Заполнит пустые поля или перезапишет существующие, если включить флаги ниже.</div>
-                </div>
-              </div>
-              <div class="bulk-import-check-grid">
-                <label class="bulk-import-check">
-                  <input id="bulkImportOverwriteName" type="checkbox">
-                  Перезаписать имя
-                </label>
-                <label class="bulk-import-check">
-                  <input id="bulkImportOverwriteGroups" type="checkbox">
-                  Перезаписать группы
-                </label>
-              </div>
-              <div>
-                <button type="button" id="bulkImportApplyExistingBtn" class="btn">Применить шаблоны</button>
-              </div>
-            </div>
-          </div>
+          <div id="bulkImportSummary" class="bulk-import-summary">Вставьте список, чтобы увидеть сводку импорта.</div>
         </section>
       </div>
 
