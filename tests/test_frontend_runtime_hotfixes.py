@@ -1508,6 +1508,10 @@ def test_monaco_custom_menu_runs_clipboard_actions_from_release_not_pointerdown(
     assert '_handleCustomContextMenuAction(ev);' in monaco_shared[pointerup_start:mouseup_start]
     assert '_handleCustomContextMenuAction(ev);' in monaco_shared[mouseup_start:click_start]
     assert '_handleCustomContextMenuAction(ev);' in monaco_shared[click_start:context_start]
+    assert 'function installCustomContextMenuGlobalActionBridge() {' in monaco_shared
+    assert "document.addEventListener('pointerup', onGlobalMenuAction, true);" in monaco_shared
+    assert "document.addEventListener('mouseup', onGlobalMenuAction, true);" in monaco_shared
+    assert "document.addEventListener('click', onGlobalMenuAction, true);" in monaco_shared
     assert 'customContextMenuClipboardShadowReady' in monaco_shared
     assert "host.addEventListener('paste', onPaste, true);" in monaco_shared
 

@@ -36,6 +36,9 @@ import {
     customContextMenuCleanupByEditor: typeof WeakMap !== 'undefined' ? new WeakMap() : null,
     customContextMenuClipboardShadow: '',
     customContextMenuClipboardShadowReady: false,
+    customContextMenuGlobalActionBridgeInstalled: false,
+    customContextMenuLastActionAt: 0,
+    customContextMenuLastActionKey: '',
     yamlAssistByModel: typeof WeakMap !== 'undefined' ? new WeakMap() : null,
     snippetProvidersByModel: typeof WeakMap !== 'undefined' ? new WeakMap() : null,
     quickFixProvidersByModel: typeof WeakMap !== 'undefined' ? new WeakMap() : null,
@@ -1219,12 +1222,40 @@ import {
     try { menu.style.removeProperty('top'); } catch (e) {}
   }
 
+  function _getCustomContextMenuActionButton(ev) {
+    try {
+      const target = ev ? ev.target : null;
+      if (target && typeof target.closest === 'function') {
+        const btn = target.closest('.xk-routing-monaco-menu button[data-action], .xk-routing-monaco-menu [data-action]');
+        if (btn) return btn;
+      }
+    } catch (e) {}
+    try {
+      const path = ev && typeof ev.composedPath === 'function' ? ev.composedPath() : null;
+      if (Array.isArray(path)) {
+        for (const node of path) {
+          if (!node || typeof node.matches !== 'function') continue;
+          if (node.matches('.xk-routing-monaco-menu button[data-action], .xk-routing-monaco-menu [data-action]')) return node;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
   async function _handleCustomContextMenuAction(ev) {
-    const btn = ev.target && ev.target.closest ? ev.target.closest('button[data-action]') : null;
+    const btn = _getCustomContextMenuActionButton(ev);
     if (!btn || btn.disabled) return;
     try { ev.preventDefault(); } catch (e) {}
     try { ev.stopPropagation(); } catch (e) {}
+    try { ev.stopImmediatePropagation(); } catch (e) {}
     const action = String(btn.dataset.action || '');
+    const stamp = (() => {
+      try { return Date.now(); } catch (e) { return 0; }
+    })();
+    const lastAt = Number(_state.customContextMenuLastActionAt || 0);
+    if (_state.customContextMenuLastActionKey === action && stamp && lastAt && stamp - lastAt < 500) return;
+    _state.customContextMenuLastActionAt = stamp;
+    _state.customContextMenuLastActionKey = action;
     const ctx = _state.customContextMenuCtx;
     hideCustomContextMenu();
     if (!ctx || !ctx.editor) return;
@@ -1233,7 +1264,27 @@ import {
     } catch (e) {}
   }
 
+  function installCustomContextMenuGlobalActionBridge() {
+    if (_state.customContextMenuGlobalActionBridgeInstalled) return;
+    _state.customContextMenuGlobalActionBridgeInstalled = true;
+    const onGlobalMenuAction = (ev) => {
+      const btn = _getCustomContextMenuActionButton(ev);
+      if (!btn) return;
+      try {
+        if ((ev.type === 'pointerup' || ev.type === 'mouseup') && typeof ev.button === 'number' && ev.button !== 0) return;
+      } catch (e) {}
+      try {
+        if (ev.type === 'mouseup' && typeof window.PointerEvent !== 'undefined') return;
+      } catch (e) {}
+      _handleCustomContextMenuAction(ev);
+    };
+    try { document.addEventListener('pointerup', onGlobalMenuAction, true); } catch (e) {}
+    try { document.addEventListener('mouseup', onGlobalMenuAction, true); } catch (e) {}
+    try { document.addEventListener('click', onGlobalMenuAction, true); } catch (e) {}
+  }
+
   function ensureCustomContextMenuDom(cfg) {
+    installCustomContextMenuGlobalActionBridge();
     let menu = _state.customContextMenuEl;
     if (!menu || !menu.isConnected) {
       menu = document.createElement('div');
