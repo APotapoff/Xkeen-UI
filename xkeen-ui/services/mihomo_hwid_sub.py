@@ -477,6 +477,28 @@ def _make_error(
     return payload
 
 
+def _is_tls_handshake_timeout_message(msg: str) -> bool:
+    low = str(msg or "").lower()
+    return (
+        ("handshake" in low and "timed out" in low)
+        or ("_ssl.c" in low and "timed out" in low)
+    )
+
+
+def _tls_handshake_timeout_error(raw_message: str):
+    return _make_error(
+        "TLS_HANDSHAKE_TIMEOUT",
+        "TLS handshake с сервером подписки не завершился вовремя.",
+        (
+            "Часто это блокировка, CDN/rate-limit или плохой маршрут через текущий "
+            "VPN/exit-IP. Попробуйте другой VPN-сервер, повторите позже или включите "
+            "«Игнорировать TLS» только для диагностики."
+        ),
+        retryable=True,
+        detail=str(raw_message or ""),
+    )
+
+
 def _probe_once(
     url: str,
     *,
@@ -762,13 +784,18 @@ def probe_subscription(
                 }
             code = "NETWORK_ERROR"
             hint = "Проверьте доступ к интернету/домену и попробуйте снова."
-            if (
+            err_payload = None
+            if _is_tls_handshake_timeout_message(msg):
+                code = "TLS_HANDSHAKE_TIMEOUT"
+                err_payload = _tls_handshake_timeout_error(msg)
+            if not err_payload and (
                 "CERTIFICATE_VERIFY_FAILED" in msg
                 or "tls" in msg.lower()
                 or "x509" in msg.lower()
             ):
                 code = "TLS_VERIFY_FAILED"
                 hint = "Попробуйте включить «Игнорировать TLS» или исправить сертификат/домен."
+                err_payload = None
             return {
                 "ok": False,
                 "probe": {
@@ -788,9 +815,16 @@ def probe_subscription(
                 },
                 "headers_used": hdrs,
                 "warnings": [],
-                "error": _make_error(code, msg, hint, retryable=True),
+                "error": err_payload or _make_error(code, msg, hint, retryable=True),
             }
-        except TimeoutError:
+        except TimeoutError as e:
+            msg = str(e)
+            err_payload = _tls_handshake_timeout_error(msg) if _is_tls_handshake_timeout_message(msg) else _make_error(
+                "TIMEOUT",
+                "timeout",
+                "Сервер подписки не ответил вовремя. Попробуйте позже.",
+                retryable=True,
+            )
             return {
                 "ok": False,
                 "probe": {
@@ -810,14 +844,11 @@ def probe_subscription(
                 },
                 "headers_used": hdrs,
                 "warnings": [],
-                "error": _make_error(
-                    "TIMEOUT",
-                    "timeout",
-                    "Сервер подписки не ответил вовремя. Попробуйте позже.",
-                    retryable=True,
-                ),
+                "error": err_payload,
             }
         except Exception as e:
+            msg = str(e)
+            err_payload = _tls_handshake_timeout_error(msg) if _is_tls_handshake_timeout_message(msg) else None
             return {
                 "ok": False,
                 "probe": {
@@ -837,9 +868,9 @@ def probe_subscription(
                 },
                 "headers_used": hdrs,
                 "warnings": [],
-                "error": _make_error(
+                "error": err_payload or _make_error(
                     "PROBE_FAILED",
-                    str(e),
+                    msg,
                     "Не удалось проверить подписку.",
                     retryable=True,
                 ),

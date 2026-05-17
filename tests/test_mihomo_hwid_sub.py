@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import urllib.error
+
 from services import mihomo_hwid_sub as hwid
 
 
@@ -152,3 +154,21 @@ def test_hwid_provider_entry_uses_mihomo_provider_defaults():
     assert "    override:" in entry
     assert "      udp: true" in entry
     assert "      tfo: true" in entry
+
+
+def test_hwid_probe_reports_tls_handshake_timeout(monkeypatch):
+    def fake_probe_once(url, *, method, headers, insecure, timeout, policy):
+        raise urllib.error.URLError("_ssl.c:999: The handshake operation timed out")
+
+    monkeypatch.setattr(hwid, "_probe_once", fake_probe_once)
+
+    result = hwid.probe_subscription(
+        "https://provider.example/sub",
+        headers={"x-hwid": "AABBCCDDEEFF"},
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "TLS_HANDSHAKE_TIMEOUT"
+    assert result["error"]["message"] == "TLS handshake с сервером подписки не завершился вовремя."
+    assert "VPN/exit-IP" in result["error"]["hint"]
+    assert "_ssl.c:999" in result["error"]["detail"]

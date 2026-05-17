@@ -417,26 +417,6 @@ def create_mihomo_blueprint(
             policy=policy,
         )
 
-        # UX: autodetect "обычная" подписка.
-        # If the subscription also works without HWID headers, show a non-blocking hint in UI.
-        try:
-            if isinstance(result, dict) and result.get("ok") is True:
-                plain = _mh_hwid_probe_subscription_safe(
-                    url,
-                    headers=None,
-                    insecure=insecure,
-                    timeout=timeout_s,
-                    prefer=prefer,
-                    policy=policy,
-                )
-                if isinstance(plain, dict):
-                    result["no_headers_ok"] = True if plain.get("ok") is True else False
-                    probe = plain.get("probe") if isinstance(plain.get("probe"), dict) else {}
-                    result["no_headers_http_status"] = probe.get("http_status")
-        except Exception:
-            # Ignore autodetect errors — probe result remains usable.
-            pass
-
         # Map known error codes to helpful HTTP statuses (no 500).
         if result.get("ok") is True:
             return jsonify(result), 200
@@ -446,7 +426,7 @@ def create_mihomo_blueprint(
         status = 502
         if code == "INVALID_URL":
             status = 400
-        elif code == "TIMEOUT":
+        elif code in {"TIMEOUT", "TLS_HANDSHAKE_TIMEOUT"}:
             status = 504
         elif code == "URL_BLOCKED":
             status = 400
@@ -502,7 +482,7 @@ def create_mihomo_blueprint(
             status = 502
             if code == "INVALID_URL":
                 status = 400
-            elif code == "TIMEOUT":
+            elif code in {"TIMEOUT", "TLS_HANDSHAKE_TIMEOUT"}:
                 status = 504
             elif code == "URL_BLOCKED":
                 status = 400

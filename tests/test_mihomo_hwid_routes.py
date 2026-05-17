@@ -120,5 +120,52 @@ def test_hwid_probe_route_allows_private_url_when_enabled(monkeypatch, client):
     assert payload["ok"] is True
     assert calls[0]["allow_private_hosts"] is True
     assert calls[0]["headers"]["x-hwid"] == "AABBCCDDEEFF"
-    assert calls[1]["headers"] is None
+    assert "no_headers_ok" not in payload
+    assert len(calls) == 1
 
+
+def test_hwid_probe_route_maps_tls_handshake_timeout_to_504(monkeypatch, client):
+    monkeypatch.setattr(
+        mihomo,
+        "_mh_hwid_get_device_info",
+        lambda: {"headers": {"x-hwid": "AABBCCDDEEFF"}},
+    )
+
+    def fake_probe(url, *, headers, insecure, timeout, prefer, policy):
+        return {
+            "ok": False,
+            "probe": {
+                "url": url,
+                "resolved_url": None,
+                "method": "HEAD",
+                "http_status": None,
+                "content_type": None,
+                "content_length": None,
+                "timing_ms": int(timeout * 1000),
+            },
+            "profile": {
+                "profile_title": None,
+                "profile_title_raw": None,
+                "profile_title_encoding": None,
+                "suggested_name": None,
+            },
+            "headers_used": headers or {},
+            "warnings": [],
+            "error": {
+                "code": "TLS_HANDSHAKE_TIMEOUT",
+                "message": "TLS handshake с сервером подписки не завершился вовремя.",
+                "hint": "Попробуйте другой VPN/exit-IP.",
+                "retryable": True,
+            },
+        }
+
+    monkeypatch.setattr(mihomo, "_mh_hwid_probe_subscription_safe", fake_probe)
+
+    response = client.post(
+        "/api/mihomo/hwid/probe",
+        json={"url": "https://provider.example/sub"},
+    )
+
+    assert response.status_code == 504
+    payload = response.get_json()
+    assert payload["error"]["code"] == "TLS_HANDSHAKE_TIMEOUT"
