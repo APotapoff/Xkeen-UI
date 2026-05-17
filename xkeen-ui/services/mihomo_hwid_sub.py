@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import os
 import re
@@ -22,6 +23,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict
@@ -176,6 +178,45 @@ def _hwid_from_mac(mac: str | None) -> str:
     return s
 
 
+def _env_hwid_override() -> tuple[str | None, str | None]:
+    for key in ("XKEEN_MIHOMO_HWID", "XKEEN_HWID"):
+        hwid = _hwid_from_mac(os.environ.get(key))
+        if len(hwid) == 12:
+            return hwid, key
+    return None, None
+
+
+def _hwid_from_uuid_node() -> tuple[str | None, str | None]:
+    try:
+        node = int(uuid.getnode())
+    except Exception:
+        return None, None
+    if node <= 0:
+        return None, None
+    hwid = f"{node:012X}"[-12:]
+    if hwid in {"000000000000", "FFFFFFFFFFFF"}:
+        return None, None
+    try:
+        first_octet = int(hwid[:2], 16)
+        source = "uuid_node_random" if (first_octet & 0x01) else "uuid_node"
+    except Exception:
+        source = "uuid_node"
+    return hwid, source
+
+
+def _hwid_from_machine_id() -> tuple[str | None, str | None]:
+    for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        raw = _read_text(path, max_bytes=512)
+        if not raw:
+            continue
+        normalized = re.sub(r"[^A-Za-z0-9_-]", "", raw)
+        if not normalized:
+            continue
+        digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        return digest[:12].upper(), "machine_id"
+    return None, None
+
+
 def _run_cmd(args: list[str], *, timeout: float = 2.0) -> str | None:
     try:
         p = subprocess.run(
@@ -289,8 +330,26 @@ def _detect_mihomo_version() -> str | None:
 def get_device_info() -> Dict[str, Any]:
     """Collect best-effort device info + headers used by HWID subscriptions."""
     # MAC displayed for UX + HWID normalized for headers (upstream-compatible).
+    env_hwid, env_source = _env_hwid_override()
     mac = _pick_mac_address_keenetic() or ""
-    hwid = _hwid_from_mac(mac)
+    mac_hwid = _hwid_from_mac(mac)
+    hwid_source = "none"
+    if env_hwid:
+        hwid = env_hwid
+        hwid_source = env_source or "env"
+    elif mac_hwid:
+        hwid = mac_hwid
+        hwid_source = "mac"
+    else:
+        uuid_hwid, uuid_source = _hwid_from_uuid_node()
+        if uuid_hwid and uuid_source != "uuid_node_random":
+            hwid, hwid_source = uuid_hwid, uuid_source
+        else:
+            hwid, hwid_source = _hwid_from_machine_id()
+            if not hwid and uuid_hwid:
+                hwid, hwid_source = uuid_hwid, uuid_source
+        hwid = hwid or ""
+        hwid_source = hwid_source or "none"
 
     ndm = _ndmc_show_version()
     os_ver = _parse_ndmc_os_ver(ndm)
@@ -322,12 +381,35 @@ def get_device_info() -> Dict[str, Any]:
     return {
         "mac": mac,
         "hwid": hwid,
+        "hwid_source": hwid_source,
         "device_model": device_model,
         "os_release": os_release,
         "kernel_release": kernel_release,
         "mihomo_version": mh_ver,
         "user_agent": ua,
         "headers": headers,
+        "hwid_warning": (
+            (
+                "HWID не найден по MAC; использован fallback uuid. "
+                "Если подписка должна быть привязана строго к роутеру, задайте XKEEN_MIHOMO_HWID."
+            )
+            if hwid and hwid_source == "uuid_node"
+            else (
+                "HWID не найден по MAC; использован стабильный fallback machine-id. "
+                "Для точной привязки можно задать XKEEN_MIHOMO_HWID."
+                if hwid and hwid_source == "machine_id"
+                else (
+                    "HWID не найден по MAC; использован временный uuid fallback. "
+                    "Для стабильной HWID-подписки задайте XKEEN_MIHOMO_HWID."
+                    if hwid and hwid_source == "uuid_node_random"
+                    else (
+                        "HWID не удалось определить. Для HWID-подписки задайте XKEEN_MIHOMO_HWID."
+                        if not hwid
+                        else None
+                    )
+                )
+            )
+        ),
     }
 
 
@@ -1001,12 +1083,13 @@ def build_provider_entry(
     lines.append(f"  {nm}:")
     lines.append("    type: http")
     lines.append(f"    url: {_yaml_quote(u)}")
-    lines.append("    interval: 3600")
+    lines.append("    interval: 43200")
     lines.append(f"    path: {_yaml_quote(f'./proxy_providers/{nm}.yaml')}")
     lines.append("    health-check:")
     lines.append("      enable: true")
     lines.append('      url: "https://www.gstatic.com/generate_204"')
-    lines.append("      interval: 600")
+    lines.append("      interval: 300")
+    lines.append("      expected-status: 204")
 
     # Mihomo docs show header values as list-of-strings. This is the most compatible form.
     def push_header(key: str, val: str | None) -> list[str]:
@@ -1016,16 +1099,17 @@ def build_provider_entry(
         return [f"      {key}:", f"      - {_yaml_quote(v)}"]
 
     header_lines: list[str] = []
-    header_lines += push_header("x-hwid", h.get("x-hwid"))
-    header_lines += push_header("x-device-os", h.get("x-device-os"))
-    header_lines += push_header("x-ver-os", h.get("x-ver-os"))
-    header_lines += push_header("x-device-model", h.get("x-device-model"))
     header_lines += push_header("User-Agent", h.get("User-Agent") or h.get("user-agent"))
+    header_lines += push_header("x-hwid", h.get("x-hwid"))
 
     if header_lines:
         lines.append("    header:")
         # Each header item is already indented to be inside 'header:'
         lines.extend(header_lines)
+
+    lines.append("    override:")
+    lines.append("      udp: true")
+    lines.append("      tfo: true")
 
     return "\n".join(lines) + "\n"
 

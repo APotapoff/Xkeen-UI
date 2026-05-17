@@ -716,12 +716,13 @@ let mihomoHwidSubModuleApi = null;
     lines.push(`  ${nm}:`);
     lines.push(`    type: http`);
     lines.push(`    url: ${yamlQuote(url)}`);
-    lines.push(`    interval: 3600`);
+    lines.push(`    interval: 43200`);
     lines.push(`    path: ${yamlQuote(`./proxy_providers/${nm}.yaml`)}`);
     lines.push(`    health-check:`);
     lines.push(`      enable: true`);
     lines.push(`      url: "https://www.gstatic.com/generate_204"`);
-    lines.push(`      interval: 600`);
+    lines.push(`      interval: 300`);
+    lines.push(`      expected-status: 204`);
 
     const headerLines = [];
     const pushH = (k, v) => {
@@ -732,16 +733,17 @@ let mihomoHwidSubModuleApi = null;
       headerLines.push(`      - ${yamlQuote(vv)}`);
     };
 
-    pushH('x-hwid', h['x-hwid']);
-    pushH('x-device-os', h['x-device-os']);
-    pushH('x-ver-os', h['x-ver-os']);
-    pushH('x-device-model', h['x-device-model']);
     pushH('User-Agent', h['User-Agent'] || h['user-agent']);
+    pushH('x-hwid', h['x-hwid']);
 
     if (headerLines.length) {
       lines.push(`    header:`);
       lines.push(...headerLines);
     }
+
+    lines.push(`    override:`);
+    lines.push(`      udp: true`);
+    lines.push(`      tfo: true`);
 
     return lines.join('\n') + '\n';
   }
@@ -841,18 +843,6 @@ let mihomoHwidSubModuleApi = null;
       const title = p.profile_title ? String(p.profile_title) : '';
       const suggested = p.suggested_name ? String(p.suggested_name) : '';
 
-      // Autodetect: if subscription also works WITHOUT HWID headers, it's likely a normal subscription.
-      // In that case we show a small non-blocking tip.
-      try {
-        if (res.no_headers_ok === true) {
-          setTip('Похоже, это обычная подписка (работает без HWID). Headers можно оставить — сервер обычно игнорирует; при ошибках попробуйте убрать headers.');
-        } else {
-          setTip('');
-        }
-      } catch (e0) {
-        setTip('');
-      }
-
       // Auto-fill name when empty (or when previously autogen)
       try {
         const cur = nameEl ? String(nameEl.value || '').trim() : '';
@@ -868,6 +858,22 @@ let mihomoHwidSubModuleApi = null;
       }
 
       const headers = (res.headers_used) || (dev && dev.headers) || {};
+      try {
+        const tips = [];
+        const hwid = String((headers && headers['x-hwid']) || '').trim();
+        const hwidWarning = dev && dev.hwid_warning ? String(dev.hwid_warning) : '';
+        if (!hwid) {
+          tips.push('HWID не определён: provider будет без x-hwid. Для HWID-подписки задай XKEEN_MIHOMO_HWID или проверь MAC интерфейса роутера.');
+        } else if (hwidWarning) {
+          tips.push(hwidWarning);
+        }
+        if (res.no_headers_ok === true) {
+          tips.push('Сервер отвечает и без HWID-заголовков, но это не доказывает, что подписка обычная. Для premium/HWID лучше оставить header.');
+        }
+        setTip(tips.join(' '));
+      } catch (e0) {
+        setTip('');
+      }
       const snippet = buildProviderSnippet(nm, url, headers);
       setPreview(snippet);
 

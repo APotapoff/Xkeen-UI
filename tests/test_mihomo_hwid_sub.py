@@ -110,3 +110,45 @@ def test_hwid_probe_private_host_can_be_enabled(monkeypatch):
     assert result["ok"] is True
     assert calls == ["https://127.0.0.1/sub"]
 
+
+def test_hwid_device_info_uses_uuid_node_fallback_when_mac_missing(monkeypatch):
+    monkeypatch.delenv("XKEEN_MIHOMO_HWID", raising=False)
+    monkeypatch.delenv("XKEEN_HWID", raising=False)
+    monkeypatch.setattr(hwid, "_pick_mac_address_keenetic", lambda: None)
+    monkeypatch.setattr(hwid.uuid, "getnode", lambda: 0x6488FA3B0CF4)
+    monkeypatch.setattr(hwid, "_ndmc_show_version", lambda: "")
+    monkeypatch.setattr(hwid, "_detect_mihomo_version", lambda: "v1.19.25")
+
+    info = hwid.get_device_info()
+
+    assert info["hwid"] == "6488FA3B0CF4"
+    assert info["hwid_source"] == "uuid_node"
+    assert info["headers"]["x-hwid"] == "6488FA3B0CF4"
+    assert info["headers"]["User-Agent"] == "mihomo/v1.19.25"
+
+
+def test_hwid_provider_entry_uses_mihomo_provider_defaults():
+    entry = hwid.build_provider_entry(
+        "OverSecure_VPN_4G",
+        "https://oversub.cloud/eCNMgAGfH_ayLPH0",
+        {
+            "x-hwid": "6488FA3B0CF4",
+            "x-device-os": "Keenetic OS",
+            "x-ver-os": "4.2.6",
+            "x-device-model": "Keenetic",
+            "User-Agent": "mihomo/v1.19.25",
+        },
+    )
+
+    assert "  OverSecure_VPN_4G:" in entry
+    assert "    interval: 43200" in entry
+    assert "      interval: 300" in entry
+    assert "      expected-status: 204" in entry
+    assert "      User-Agent:" in entry
+    assert '      - "mihomo/v1.19.25"' in entry
+    assert "      x-hwid:" in entry
+    assert '      - "6488FA3B0CF4"' in entry
+    assert "      x-device-os:" not in entry
+    assert "    override:" in entry
+    assert "      udp: true" in entry
+    assert "      tfo: true" in entry
