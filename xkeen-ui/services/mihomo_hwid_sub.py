@@ -23,7 +23,6 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict
@@ -186,24 +185,6 @@ def _env_hwid_override() -> tuple[str | None, str | None]:
     return None, None
 
 
-def _hwid_from_uuid_node() -> tuple[str | None, str | None]:
-    try:
-        node = int(uuid.getnode())
-    except Exception:
-        return None, None
-    if node <= 0:
-        return None, None
-    hwid = f"{node:012X}"[-12:]
-    if hwid in {"000000000000", "FFFFFFFFFFFF"}:
-        return None, None
-    try:
-        first_octet = int(hwid[:2], 16)
-        source = "uuid_node_random" if (first_octet & 0x01) else "uuid_node"
-    except Exception:
-        source = "uuid_node"
-    return hwid, source
-
-
 def _hwid_from_machine_id() -> tuple[str | None, str | None]:
     for path in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
         raw = _read_text(path, max_bytes=512)
@@ -215,6 +196,64 @@ def _hwid_from_machine_id() -> tuple[str | None, str | None]:
         digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
         return digest[:12].upper(), "machine_id"
     return None, None
+
+
+def _ui_state_dir() -> str:
+    try:
+        from core.paths import UI_STATE_DIR
+
+        return str(UI_STATE_DIR or "").strip() or "/opt/etc/xkeen-ui"
+    except Exception:
+        return (
+            os.environ.get("XKEEN_UI_STATE_DIR")
+            or os.environ.get("XKEEN_UI_DIR")
+            or "/opt/etc/xkeen-ui"
+        )
+
+
+def _generated_hwid_path() -> str:
+    return os.path.join(_ui_state_dir(), "mihomo-hwid.txt")
+
+
+def _valid_hwid(hwid: str | None) -> str:
+    s = _hwid_from_mac(hwid)
+    if len(s) != 12 or s in {"000000000000", "FFFFFFFFFFFF"}:
+        return ""
+    return s
+
+
+def _new_random_hwid() -> str:
+    raw = bytearray(os.urandom(6))
+    # MAC-like, locally administered, unicast. Stable storage happens below.
+    raw[0] = (raw[0] | 0x02) & 0xFE
+    return "".join(f"{b:02X}" for b in raw)
+
+
+def _hwid_from_generated_state() -> tuple[str | None, str | None]:
+    path = _generated_hwid_path()
+    existing = _valid_hwid(_read_text(path, max_bytes=256))
+    if existing:
+        return existing, "generated_state"
+
+    hwid = _new_random_hwid()
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(hwid + "\n")
+        try:
+            os.chmod(tmp, 0o600)
+        except Exception:
+            pass
+        os.replace(tmp, path)
+        return hwid, "generated_state"
+    except Exception:
+        try:
+            if "tmp" in locals() and os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
+        return hwid, "generated_ephemeral"
 
 
 def _run_cmd(args: list[str], *, timeout: float = 2.0) -> str | None:
@@ -341,13 +380,9 @@ def get_device_info() -> Dict[str, Any]:
         hwid = mac_hwid
         hwid_source = "mac"
     else:
-        uuid_hwid, uuid_source = _hwid_from_uuid_node()
-        if uuid_hwid and uuid_source != "uuid_node_random":
-            hwid, hwid_source = uuid_hwid, uuid_source
-        else:
-            hwid, hwid_source = _hwid_from_machine_id()
-            if not hwid and uuid_hwid:
-                hwid, hwid_source = uuid_hwid, uuid_source
+        hwid, hwid_source = _hwid_from_machine_id()
+        if not hwid:
+            hwid, hwid_source = _hwid_from_generated_state()
         hwid = hwid or ""
         hwid_source = hwid_source or "none"
 
@@ -384,6 +419,10 @@ def get_device_info() -> Dict[str, Any]:
         "XKEEN_MIHOMO_HWID и нажмите Save. После этого заново нажмите «Проверить» "
         "в окне HWID-подписки."
     )
+    generated_hint = (
+        "Это не новый random при каждом клике: панель сохраняет его в UI state и "
+        "будет использовать повторно, чтобы привязка подписки не менялась сама по себе."
+    )
 
     return {
         "mac": mac,
@@ -397,19 +436,19 @@ def get_device_info() -> Dict[str, Any]:
         "headers": headers,
         "hwid_warning": (
             (
-                "Не удалось взять HWID из MAC роутера, поэтому панель использовала запасной "
-                f"идентификатор {hwid}. Обычно этого достаточно. {hwid_env_hint}"
-            )
-            if hwid and hwid_source == "uuid_node"
-            else (
-                "Не удалось взять HWID из MAC роутера, поэтому панель использовала запасной "
+                "Не удалось взять HWID из MAC роутера, поэтому панель использовала стабильный "
                 f"идентификатор {hwid} из machine-id. Обычно этого достаточно. {hwid_env_hint}"
-                if hwid and hwid_source == "machine_id"
+            )
+            if hwid and hwid_source == "machine_id"
+            else (
+                "Не удалось взять HWID из MAC роутера, поэтому панель сгенерировала запасной "
+                f"идентификатор {hwid}. {generated_hint} Обычно этого достаточно. {hwid_env_hint}"
+                if hwid and hwid_source == "generated_state"
                 else (
                     "Не удалось взять HWID из MAC роутера, поэтому панель использовала "
-                    f"временный идентификатор {hwid}. Чтобы подписка не меняла привязку после "
-                    f"перезапуска или переустановки, укажите постоянный HWID. {hwid_env_hint}"
-                    if hwid and hwid_source == "uuid_node_random"
+                    f"временный идентификатор {hwid}. Его не удалось сохранить, поэтому он может "
+                    f"измениться после перезапуска. {hwid_env_hint}"
+                    if hwid and hwid_source == "generated_ephemeral"
                     else (
                         "HWID устройства не удалось определить. Если провайдер требует HWID, "
                         "возьмите значение в личном кабинете или у поддержки провайдера. "

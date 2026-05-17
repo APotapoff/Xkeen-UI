@@ -113,23 +113,31 @@ def test_hwid_probe_private_host_can_be_enabled(monkeypatch):
     assert calls == ["https://127.0.0.1/sub"]
 
 
-def test_hwid_device_info_uses_uuid_node_fallback_when_mac_missing(monkeypatch):
+def test_hwid_device_info_uses_stored_generated_fallback_when_mac_missing(monkeypatch, tmp_path):
     monkeypatch.delenv("XKEEN_MIHOMO_HWID", raising=False)
     monkeypatch.delenv("XKEEN_HWID", raising=False)
     monkeypatch.setattr(hwid, "_pick_mac_address_keenetic", lambda: None)
-    monkeypatch.setattr(hwid.uuid, "getnode", lambda: 0x6488FA3B0CF4)
+    monkeypatch.setattr(hwid, "_hwid_from_machine_id", lambda: (None, None))
+    monkeypatch.setattr(hwid, "_ui_state_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(hwid.os, "urandom", lambda n: b"\x10\xdd\xb1\xc0\xba\xdf")
     monkeypatch.setattr(hwid, "_ndmc_show_version", lambda: "")
     monkeypatch.setattr(hwid, "_detect_mihomo_version", lambda: "v1.19.25")
 
     info = hwid.get_device_info()
 
-    assert info["hwid"] == "6488FA3B0CF4"
-    assert info["hwid_source"] == "uuid_node"
-    assert info["headers"]["x-hwid"] == "6488FA3B0CF4"
+    assert info["hwid"] == "12DDB1C0BADF"
+    assert info["hwid_source"] == "generated_state"
+    assert info["headers"]["x-hwid"] == "12DDB1C0BADF"
     assert info["headers"]["User-Agent"] == "mihomo/v1.19.25"
     assert "Обычно этого достаточно" in info["hwid_warning"]
+    assert "не новый random при каждом клике" in info["hwid_warning"]
     assert "DevTools → ENV" in info["hwid_warning"]
     assert "XKEEN_MIHOMO_HWID" in info["hwid_warning"]
+    assert (tmp_path / "mihomo-hwid.txt").read_text(encoding="utf-8").strip() == "12DDB1C0BADF"
+
+    monkeypatch.setattr(hwid.os, "urandom", lambda n: b"\xaa\xbb\xcc\xdd\xee\xff")
+    info2 = hwid.get_device_info()
+    assert info2["hwid"] == "12DDB1C0BADF"
 
 
 def test_hwid_provider_entry_uses_mihomo_provider_defaults():
