@@ -2558,6 +2558,48 @@ function initEngineToggle() {
           return out.filter(Boolean);
         }
 
+        function extractProxyNamesFromYamlText(text) {
+          const names = [];
+          String(text || "").split(/\r?\n/).forEach((line) => {
+            const m = String(line || "").match(/^\s*-\s*name\s*:\s*(?:'((?:[^']|'')*)'|"((?:[^"\\]|\\.)*)"|(.+?))\s*(?:#.*)?$/);
+            if (!m) return;
+            const name = String(m[1] || m[2] || m[3] || "").replace(/''/g, "'").trim();
+            if (name) names.push(name);
+          });
+          return names;
+        }
+
+        function getExistingProxyNamesForBulkImport(clearExisting = false) {
+          const names = [];
+          if (clearExisting) return names;
+          try {
+            proxyControllers.forEach((c) => {
+              const st = c && typeof c.getState === 'function' ? c.getState() : null;
+              if (!st) return;
+              if (st.name) names.push(String(st.name).trim());
+              if (st.yaml) names.push(...extractProxyNamesFromYamlText(st.yaml));
+            });
+          } catch (e) {}
+          return uniqueStrings(names);
+        }
+
+        function isLikelyXrayJsonSubscriptionUrl(url) {
+          const raw = String(url || "");
+          if (!/^https?:\/\//i.test(raw)) return false;
+          try {
+            const u = new URL(raw);
+            const haystack = [
+              u.hostname,
+              u.pathname,
+              u.search,
+              u.hash,
+            ].join(" ").toLowerCase();
+            return /xray|x-?keen|json|subscription/.test(haystack) && /xray|json/.test(haystack);
+          } catch (e) {
+            return /xray|json/i.test(raw);
+          }
+        }
+
         function normalizeImportedLine(line) {
           if (!line) return "";
           return String(line)
@@ -3214,9 +3256,13 @@ function initEngineToggle() {
           const result = analyzeBulkImportText(text, opts);
           const importableSubs = opts.toSubs ? result.subs.length : 0;
           const importableTotal = result.proxies.length + importableSubs;
+          const likelyXraySubs = result.subs.filter((url) => isLikelyXrayJsonSubscriptionUrl(url)).length;
           const parts = [
             `Будет добавлено: узлов ${result.proxies.length}, подписок ${importableSubs}.`,
           ];
+          if (opts.toSubs && likelyXraySubs) {
+            parts.push(`Xray-JSON URL будет проверен при импорте: ${likelyXraySubs}.`);
+          }
           if (!opts.toSubs && result.subscriptionLines) {
             parts.push(`HTTPS-строк найдено: ${result.subscriptionLines}, добавление в подписки выключено.`);
           }
@@ -3227,7 +3273,7 @@ function initEngineToggle() {
           bulkImportSummary.classList.toggle("is-warning", importableTotal === 0 || result.unknown.length > 0);
         }
 
-        function doBulkImport() {
+        async function doBulkImport() {
           if (!bulkImportTextarea) return;
           const text = String(bulkImportTextarea.value || "");
           const opts = getBulkImportOptions();
@@ -3253,43 +3299,128 @@ function initEngineToggle() {
             return;
           }
 
-          if (clearExisting) {
-            clearAllProxies();
+          const originalBtnText = bulkImportApplyBtn ? String(bulkImportApplyBtn.textContent || "") : "";
+          if (bulkImportApplyBtn) {
+            bulkImportApplyBtn.disabled = true;
+            bulkImportApplyBtn.textContent = "Импортирую...";
           }
 
-          let addedSubs = 0;
-          if (toSubs && subs.length) {
-            addedSubs = addSubscriptionsToUI(subs, dedup);
-          }
+          try {
+            let addedSubs = 0;
+            let addedProxies = 0;
+            let convertedXray = 0;
+            let convertedXrayNodes = 0;
+            const normalSubs = [];
+            const xrayCards = [];
+            const xrayErrors = [];
+            const existingNames = getExistingProxyNamesForBulkImport(clearExisting);
 
-          let addedProxies = 0;
-          proxies.forEach((p) => {
-            createProxyCard({
-              kind: p.kind,
-              name: p.name || "",
-              groups: p.groups || "",
-              icon: p.icon || "",
-              priority: (p.priority !== null && p.priority !== undefined) ? p.priority : "",
-              tags: p.tags || "",
-              data: p.data,
+            if (toSubs && subs.length) {
+              for (const url of subs) {
+                let xrayData = null;
+                try {
+                  setStatus("Проверяю HTTPS-подписку на Xray-JSON...", "ok");
+                  xrayData = await fetchXrayJsonParse(url, existingNames);
+                } catch (e) {
+                  if (isLikelyXrayJsonSubscriptionUrl(url)) {
+                    xrayErrors.push(describeXrayProbeFailure(e));
+                    continue;
+                  }
+                  normalSubs.push(url);
+                  continue;
+                }
+
+                const xrayProxies = xrayData && Array.isArray(xrayData.proxies) ? xrayData.proxies : [];
+                const yamlItems = xrayProxies
+                  .map((p) => String(p.proxy_yaml || "").trim())
+                  .filter(Boolean)
+                  .join("\n\n");
+
+                if (!xrayData || !yamlItems) {
+                  normalSubs.push(url);
+                  continue;
+                }
+
+                xrayProxies.forEach((p) => {
+                  const name = String(p.proxy_name || "").trim();
+                  if (name) existingNames.push(name);
+                });
+                xrayCards.push({ url, yaml: yamlItems, count: Number(xrayData.count || xrayProxies.length || 0) });
+                convertedXray += 1;
+                convertedXrayNodes += Number(xrayData.count || xrayProxies.length || 0);
+              }
+            }
+
+            if (!xrayCards.length && !proxies.length && !(toSubs && normalSubs.length) && xrayErrors.length) {
+              const msg = xrayErrors[0];
+              setStatus(msg, "err");
+              try { toast(msg, "error"); } catch (e) {}
+              updateBulkImportSummary();
+              return;
+            }
+
+            if (clearExisting) {
+              clearAllProxies();
+            }
+
+            xrayCards.forEach((card) => {
+              createProxyCard({
+                kind: "yaml",
+                data: card.yaml,
+                tags: deriveTagFromUrl(card.url),
+                xrayJsonSubscription: buildXrayJsonSubscriptionMeta(card.url),
+              });
+              addedProxies += 1;
             });
-            addedProxies += 1;
-          });
 
-          // Clear textarea for convenience
-          try { bulkImportTextarea.value = ""; } catch (e) {}
-          updateBulkImportSummary();
-          hideBulkImportModal();
+            if (toSubs && normalSubs.length) {
+              addedSubs = addSubscriptionsToUI(normalSubs, dedup);
+            }
 
-          const msg = `Импортировано: узлов ${addedProxies}` + (toSubs ? `, подписок ${addedSubs}` : "") + ".";
-          let finalMsg = msg;
-          if (duplicates) finalMsg += ` Дубли пропущены: ${duplicates}.`;
-          if (unknown.length) finalMsg += ` Не распознано строк: ${unknown.length}.`;
-          setStatus(finalMsg, "ok");
-          try { toast(finalMsg, unknown.length ? 'info' : 'success'); } catch (e) {}
+            proxies.forEach((p) => {
+              createProxyCard({
+                kind: p.kind,
+                name: p.name || "",
+                groups: p.groups || "",
+                icon: p.icon || "",
+                priority: (p.priority !== null && p.priority !== undefined) ? p.priority : "",
+                tags: p.tags || "",
+                data: p.data,
+              });
+              addedProxies += 1;
+            });
 
-          // Autopreview
-          schedulePreview(200);
+            // Clear textarea for convenience
+            try { bulkImportTextarea.value = ""; } catch (e) {}
+            updateBulkImportSummary();
+            hideBulkImportModal();
+
+            const msg = `Импортировано: узлов ${addedProxies}` + (toSubs ? `, подписок ${addedSubs}` : "") + ".";
+            let finalMsg = msg;
+            if (convertedXray) {
+              const xrayVerb = convertedXrayNodes === 1 ? "конвертирован" : "конвертированы";
+              finalMsg = `Распознана Xray-JSON подписка: ${convertedXray} URL, ${convertedXrayNodes} ` +
+                plural(convertedXrayNodes, ["узел", "узла", "узлов"]) + " " + xrayVerb + ". " + finalMsg;
+            }
+            if (duplicates) finalMsg += ` Дубли пропущены: ${duplicates}.`;
+            if (unknown.length) finalMsg += ` Не распознано строк: ${unknown.length}.`;
+            if (xrayErrors.length) finalMsg += ` Xray-JSON ошибок: ${xrayErrors.length}.`;
+            setStatus(finalMsg, xrayErrors.length ? "warn" : "ok");
+            try { toast(finalMsg, (unknown.length || xrayErrors.length) ? 'info' : 'success'); } catch (e) {}
+            try { renderManagedSubscriptions(_managedServerSubscriptions); } catch (e) {}
+
+            // Autopreview
+            schedulePreview(200);
+          } catch (e) {
+            const msg = "Не удалось выполнить импорт: " + (e && e.message ? e.message : e);
+            setStatus(msg, "err");
+            try { toast(msg, "error"); } catch (e2) {}
+          } finally {
+            if (bulkImportApplyBtn) {
+              bulkImportApplyBtn.disabled = false;
+              bulkImportApplyBtn.textContent = originalBtnText || "Импортировать";
+            }
+          }
         }
       
         // ----- collect state -----
@@ -4099,7 +4230,10 @@ function initEngineToggle() {
           if (modal.dataset && modal.dataset.xkDismissWired === '1') return;
 
           modal.addEventListener('click', (ev) => {
-            if (ev && ev.target === modal) hideFn();
+            if (ev && ev.target === modal) {
+              const backdropClose = !(modal.dataset && String(modal.dataset.modalBackdropClose || "").trim() === "0");
+              if (backdropClose) hideFn();
+            }
           });
 
           try {
@@ -4294,6 +4428,40 @@ function initEngineToggle() {
           bind(bulkImportNameTemplate, "input");
           bind(bulkImportGroupsTemplate, "input");
           updateBulkImportSummary();
+        }
+
+        function wireBulkImportScrollSafety() {
+          if (!bulkImportModal || (bulkImportModal.dataset && bulkImportModal.dataset.xkBulkScrollWired === "1")) return;
+          const body = bulkImportModal.querySelector ? bulkImportModal.querySelector(".bulk-import-modal-body") : null;
+          const advanced = bulkImportModal.querySelector ? bulkImportModal.querySelector(".bulk-import-advanced") : null;
+
+          if (body) {
+            body.addEventListener("wheel", (ev) => {
+              try {
+                const target = ev && ev.target;
+                if (target && target.closest && target.closest("textarea,input,select,button")) return;
+                if (body.scrollHeight <= body.clientHeight + 2) return;
+                const before = body.scrollTop;
+                const next = Math.max(0, Math.min(body.scrollHeight - body.clientHeight, before + Number(ev.deltaY || 0)));
+                if (next === before) return;
+                body.scrollTop = next;
+                ev.preventDefault();
+              } catch (e) {}
+            }, { passive: false });
+          }
+
+          if (advanced) {
+            advanced.addEventListener("toggle", () => {
+              if (!advanced.open) return;
+              setTimeout(() => {
+                try {
+                  (bulkImportSummary || advanced).scrollIntoView({ block: "nearest", behavior: "smooth" });
+                } catch (e) {}
+              }, 0);
+            });
+          }
+
+          if (bulkImportModal.dataset) bulkImportModal.dataset.xkBulkScrollWired = "1";
         }
 
         document.addEventListener('keydown', (ev) => {
@@ -4839,6 +5007,7 @@ function initEngineToggle() {
         if (refreshManagedDueBtn) refreshManagedDueBtn.onclick = () => refreshManagedDueSubscriptions();
         if (bulkImportApplyBtn) bulkImportApplyBtn.onclick = () => doBulkImport();
         wireBulkImportSummaryUpdates();
+        wireBulkImportScrollSafety();
         generateBtn.onclick = () => generatePreviewDemo(true);
         if (resetPreviewBtn) resetPreviewBtn.onclick = () => resetPreviewToDefault();
         saveBtn.onclick = downloadConfig;
