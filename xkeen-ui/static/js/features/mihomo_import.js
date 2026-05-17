@@ -15,7 +15,7 @@ let mihomoImportModuleApi = null;
   'use strict';
 
   // Mihomo Import (Parser) UI
-  // - Paste vless/trojan/vmess/ss/hysteria2/hy2 or https-subscription
+  // - Paste vless/trojan/vmess/ss/hysteria2/hy2, https-subscription, WireGuard, OpenVPN, or Tailscale
   // - Convert to Mihomo YAML and insert into config.yaml editor
   // Legacy globals are published by features/compat/mihomo_import.js.
 
@@ -76,7 +76,7 @@ let mihomoImportModuleApi = null;
   const XRAY_MAX_INTERVAL_HOURS = 168;
 
 
-  // Import mode (Auto / Proxy / Subscription / WireGuard)
+  // Import mode (Auto / Proxy / Subscription / WireGuard / OpenVPN / Tailscale)
   const MODE_PREF_KEY = 'xkeen.mihomo.import.mode.v1';
 
   function getImportMode() {
@@ -111,6 +111,10 @@ let mihomoImportModuleApi = null;
     const mode = getImportMode();
     if (mode === 'wireguard') {
       inp.placeholder = '[Interface]\nPrivateKey = ...\nAddress = ...\n\n[Peer]\nPublicKey = ...\nEndpoint = host:port\nAllowedIPs = 0.0.0.0/0';
+    } else if (mode === 'openvpn') {
+      inp.placeholder = 'client\nremote vpn.example.com 1194\nproto udp\n<ca>\n...\n</ca>\n<tls-crypt>\n...\n</tls-crypt>';
+    } else if (mode === 'tailscale') {
+      inp.placeholder = 'hostname: xkeen\n# auth-key: tskey-auth-...\nstate-dir: ./tailscale\nudp: true\naccept-routes: true';
     } else if (mode === 'subscription') {
       inp.placeholder = 'https://...';
     } else if (mode === 'proxy') {
@@ -1845,7 +1849,7 @@ let mihomoImportModuleApi = null;
     return b + '_' + Date.now();
   }
 
-  async function parseWireguardViaApi(confText, desiredName) {
+  async function parseConfigViaApi(kind, confText, desiredName) {
     const http = getMihomoCoreHttpApi();
     const post = http && typeof http.postJSON === 'function' ? http.postJSON : null;
     if (!post) throw new Error('core http.postJSON недоступен');
@@ -1853,12 +1857,13 @@ let mihomoImportModuleApi = null;
     const body = { text: String(confText || '') };
     if (desiredName) body.name = String(desiredName || '');
 
-    const data = await post('/api/mihomo/parse/wireguard', body);
-    if (!data || data.ok === false) throw new Error((data && data.error) ? data.error : 'parse/wireguard failed');
+    const safeKind = String(kind || '').trim().toLowerCase();
+    const data = await post('/api/mihomo/parse/' + safeKind, body);
+    if (!data || data.ok === false) throw new Error((data && data.error) ? data.error : 'parse/' + safeKind + ' failed');
 
     const proxy_name = String(data.proxy_name || data.name || '').trim();
     const proxy_yaml = String(data.proxy_yaml || data.proxy || data.yaml || '').trimEnd() + '\n';
-    if (!proxy_name || !proxy_yaml) throw new Error('WireGuard: пустой результат парсинга');
+    if (!proxy_name || !proxy_yaml) throw new Error(safeKind + ': пустой результат парсинга');
 
     return { type: 'proxy', proxy_name, content: proxy_yaml };
   }
@@ -1933,10 +1938,10 @@ let mihomoImportModuleApi = null;
     const mode = getImportMode();
 
     if (!rawText.trim()) {
-      const msg =
-        mode === 'wireguard'
-          ? 'Вставь WireGuard (.conf) и нажми «Преобразовать».'
-          : 'Вставь ссылку узла или https-подписку.';
+      let msg = 'Вставь ссылку узла или https-подписку.';
+      if (mode === 'wireguard') msg = 'Вставь WireGuard (.conf) и нажми «Преобразовать».';
+      else if (mode === 'openvpn') msg = 'Вставь OpenVPN (.ovpn) и нажми «Преобразовать».';
+      else if (mode === 'tailscale') msg = 'Вставь Tailscale-параметры и нажми «Преобразовать».';
       setStatus(msg, true);
       setHint('');
       setPreview('');
@@ -1952,17 +1957,18 @@ let mihomoImportModuleApi = null;
     const outputs = [];
     const errors = [];
 
-    // WireGuard mode: parse whole textarea as a single .conf
-    if (mode === 'wireguard') {
-      setStatus('Разбираю WireGuard…', false);
+    // Config modes: parse whole textarea as a single config.
+    if (mode === 'wireguard' || mode === 'openvpn' || mode === 'tailscale') {
+      const label = mode === 'wireguard' ? 'WireGuard' : (mode === 'openvpn' ? 'OpenVPN' : 'Tailscale');
+      setStatus('Разбираю ' + label + '…', false);
       try {
-        let out = await parseWireguardViaApi(rawText, null);
+        let out = await parseConfigViaApi(mode, rawText, null);
         // Ensure unique name against current config.yaml
         if (configHasProxyName(existing, out.proxy_name)) {
           const unique = makeUniqueName(out.proxy_name, existing);
-          out = await parseWireguardViaApi(rawText, unique);
+          out = await parseConfigViaApi(mode, rawText, unique);
         }
-        outputs.push({ ...out, uri: 'wireguard.conf' });
+        outputs.push({ ...out, uri: mode + '.conf' });
       } catch (e) {
         const msg = e && e.message ? e.message : String(e || 'ошибка');
         // Make error a bit more readable for typical missing-key issue
@@ -1995,6 +2001,16 @@ let mihomoImportModuleApi = null;
           }
           if (mode === 'proxy' && /^https?:\/\//i.test(line)) {
             throw new Error('Это похоже на подписку. Выбери «HTTPS subscription» или «Auto».');
+          }
+          if (mode !== 'subscription' && /^tailscale:\/\//i.test(line)) {
+            let out = await parseConfigViaApi('tailscale', line, null);
+            if (configHasProxyName(tmp, out.proxy_name)) {
+              const unique = makeUniqueName(out.proxy_name, tmp);
+              out = await parseConfigViaApi('tailscale', line, unique);
+            }
+            outputs.push({ ...out, uri: line });
+            tmp += '\n' + out.content;
+            continue;
           }
 
           // For http(s) URLs in subscription/auto modes, try the backend

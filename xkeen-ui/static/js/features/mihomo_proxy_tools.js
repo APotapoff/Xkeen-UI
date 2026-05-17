@@ -510,7 +510,7 @@ let mihomoProxyToolsModuleApi = null;
     _prepared = null;
 
     if (!targetName) return setStatus('Выбери прокси для замены.', true);
-    if (!text) return setStatus('Вставь ссылку или WG-конфиг.', true);
+    if (!text) return setStatus('Вставь ссылку или конфиг.', true);
 
     const btn = $(IDS.prepareBtn);
     if (btn) { btn.disabled = true; btn.classList.add('loading'); }
@@ -519,10 +519,10 @@ let mihomoProxyToolsModuleApi = null;
       setStatus('Готовлю YAML…', false);
 
       let proxyYaml = '';
-      if (mode === 'wireguard') {
-        const data = await apiPost('/api/mihomo/parse/wireguard', { text: text, name: targetName });
+      if (mode === 'wireguard' || mode === 'openvpn' || mode === 'tailscale') {
+        const data = await apiPost('/api/mihomo/parse/' + mode, { text: text, name: targetName });
         proxyYaml = String(data && data.proxy_yaml ? data.proxy_yaml : '');
-        if (!proxyYaml) throw new Error('Не удалось распарсить WireGuard (.conf)');
+        if (!proxyYaml) throw new Error('Не удалось распарсить конфиг ' + mode);
       } else {
         // Auto (proxy link)
         const mi = getMihomoImportApi();

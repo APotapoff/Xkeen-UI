@@ -5,7 +5,7 @@ from flask import Flask
 
 from routes.mihomo import create_mihomo_blueprint
 from services.mihomo_generator_proxies import insert_proxies_from_state
-from services.mihomo_proxy_parsers import parse_wireguard
+from services.mihomo_proxy_parsers import parse_openvpn, parse_tailscale, parse_wireguard
 
 
 AMNEZIA_WG_V2_CONF = """
@@ -38,6 +38,43 @@ Endpoint = 162.159.192.1:2480
 PersistentKeepalive = 25
 PresharedKey = 31aIhAPwktDGpH4JDhA8GNvjFXEf/a6+UaQRyOAiyfM=
 Reserved = [209, 98, 59]
+"""
+
+OPENVPN_AUTH_USER_PASS_CONF = """
+client
+dev tun
+proto udp
+remote vpn.example.com 1194
+cipher AES-256-GCM
+auth SHA256
+tun-mtu 1500
+auth-user-pass
+dhcp-option DNS 1.1.1.1
+dhcp-option DNS 8.8.8.8
+<auth-user-pass>
+user
+secret
+</auth-user-pass>
+<ca>
+-----BEGIN CERTIFICATE-----
+MIIBexample
+-----END CERTIFICATE-----
+</ca>
+<tls-crypt>
+-----BEGIN OpenVPN Static key V1-----
+00000000000000000000000000000000
+-----END OpenVPN Static key V1-----
+</tls-crypt>
+"""
+
+TAILSCALE_SETTINGS = """
+hostname: xkeen
+auth-key: tskey-auth-example
+state-dir: ./tailscale
+udp: true
+accept-routes: true
+exit-node: auto:any
+exit-node-allow-lan-access: true
 """
 
 
@@ -137,3 +174,112 @@ def test_generator_wireguard_proxy_insert_preserves_amnezia_wg_v2_options():
     assert proxy["amnezia-wg-option"]["h4"] == "32345-32350"
     assert proxy["amnezia-wg-option"]["i5"] == ""
     assert "generator-awg" in parsed["proxy-groups"][0]["proxies"]
+
+
+def test_parse_openvpn_accepts_auth_user_pass_and_aes256():
+    result = parse_openvpn(OPENVPN_AUTH_USER_PASS_CONF, custom_name="ovpn-aes256")
+    proxy = _parsed_proxy(result.yaml)
+
+    assert proxy["name"] == "ovpn-aes256"
+    assert proxy["type"] == "openvpn"
+    assert proxy["server"] == "vpn.example.com"
+    assert proxy["port"] == 1194
+    assert proxy["proto"] == "udp"
+    assert proxy["cipher"] == "AES-256-GCM"
+    assert proxy["auth"] == "SHA256"
+    assert proxy["username"] == "user"
+    assert proxy["password"] == "secret"
+    assert proxy["remote-dns-resolve"] is True
+    assert proxy["dns"] == ["1.1.1.1", "8.8.8.8"]
+    assert "BEGIN CERTIFICATE" in proxy["ca"]
+    assert "OpenVPN Static key" in proxy["tls-crypt"]
+    assert "cert" not in proxy
+    assert "key" not in proxy
+
+
+def test_parse_tailscale_accepts_key_value_settings_without_server_port():
+    result = parse_tailscale(TAILSCALE_SETTINGS, custom_name="tailnet")
+    proxy = _parsed_proxy(result.yaml)
+
+    assert proxy["name"] == "tailnet"
+    assert proxy["type"] == "tailscale"
+    assert proxy["hostname"] == "xkeen"
+    assert proxy["auth-key"] == "tskey-auth-example"
+    assert proxy["state-dir"] == "./tailscale"
+    assert proxy["udp"] is True
+    assert proxy["accept-routes"] is True
+    assert proxy["exit-node"] == "auto:any"
+    assert proxy["exit-node-allow-lan-access"] is True
+    assert "server" not in proxy
+    assert "port" not in proxy
+
+
+def test_mihomo_parse_openvpn_and_tailscale_routes_return_yaml(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("proxies: []\n", encoding="utf-8")
+    bp = create_mihomo_blueprint(
+        MIHOMO_CONFIG_FILE=str(cfg),
+        MIHOMO_TEMPLATES_DIR=str(tmp_path),
+        MIHOMO_DEFAULT_TEMPLATE=str(tmp_path / "default.yaml"),
+        restart_xkeen=lambda: None,
+    )
+    app = Flask(__name__)
+    app.register_blueprint(bp)
+    client = app.test_client()
+
+    openvpn_response = client.post(
+        "/api/mihomo/parse/openvpn",
+        json={"text": OPENVPN_AUTH_USER_PASS_CONF, "name": "route-ovpn"},
+    )
+    assert openvpn_response.status_code == 200
+    openvpn_proxy = _parsed_proxy(openvpn_response.get_json()["proxy_yaml"])
+    assert openvpn_proxy["name"] == "route-ovpn"
+    assert openvpn_proxy["type"] == "openvpn"
+    assert openvpn_proxy["cipher"] == "AES-256-GCM"
+
+    tailscale_response = client.post(
+        "/api/mihomo/parse/tailscale",
+        json={"text": TAILSCALE_SETTINGS, "name": "route-tail"},
+    )
+    assert tailscale_response.status_code == 200
+    tailscale_proxy = _parsed_proxy(tailscale_response.get_json()["proxy_yaml"])
+    assert tailscale_proxy["name"] == "route-tail"
+    assert tailscale_proxy["type"] == "tailscale"
+    assert "server" not in tailscale_proxy
+
+
+def test_generator_openvpn_and_tailscale_proxy_insert_registers_groups():
+    base_config = "\n".join(
+        [
+            "proxies: []",
+            "proxy-groups:",
+            "  - name: Auto",
+            "    type: select",
+            "    proxies: [DIRECT]",
+            "",
+        ]
+    )
+    state = {
+        "defaultGroups": ["Auto"],
+        "proxies": [
+            {
+                "kind": "openvpn",
+                "name": "generator-ovpn",
+                "config": OPENVPN_AUTH_USER_PASS_CONF,
+            },
+            {
+                "kind": "tailscale",
+                "name": "generator-tail",
+                "config": TAILSCALE_SETTINGS,
+            },
+        ],
+    }
+
+    result = insert_proxies_from_state(base_config, state)
+    parsed = yaml.safe_load(result)
+
+    proxy_types = {proxy["name"]: proxy["type"] for proxy in parsed["proxies"]}
+    assert proxy_types["generator-ovpn"] == "openvpn"
+    assert proxy_types["generator-tail"] == "tailscale"
+    assert "generator-ovpn" in parsed["proxy-groups"][0]["proxies"]
+    assert "generator-tail" in parsed["proxy-groups"][0]["proxies"]

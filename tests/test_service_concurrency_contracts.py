@@ -158,11 +158,16 @@ def test_mihomo_proxy_parsers_are_extracted_from_core_module():
     assert 'class ProxyParseResult:' in parser_text
     assert 'def parse_vless(link: str, custom_name: Optional[str] = None) -> ProxyParseResult:' in parser_text
     assert 'def parse_wireguard(conf_text: str, custom_name: Optional[str] = None) -> ProxyParseResult:' in parser_text
+    assert 'def parse_openvpn(conf_text: str, custom_name: Optional[str] = None) -> ProxyParseResult:' in parser_text
+    assert 'def parse_tailscale(config_text: str, custom_name: Optional[str] = None) -> ProxyParseResult:' in parser_text
     assert 'def parse_proxy_uri(link: str, custom_name: Optional[str] = None) -> ProxyParseResult:' in parser_text
     assert 'from services.mihomo_proxy_parsers import parse_wireguard' in routes_text
+    assert 'from services.mihomo_proxy_parsers import parse_openvpn, parse_tailscale' in routes_text
     assert 'from services.mihomo_proxy_parsers import (' in generator_proxy_text
     assert core_text.count('def parse_vless(') == 0
     assert core_text.count('def parse_wireguard(') == 0
+    assert core_text.count('def parse_openvpn(') == 0
+    assert core_text.count('def parse_tailscale(') == 0
     assert core_text.count('def parse_trojan(') == 0
     assert core_text.count('def parse_vmess(') == 0
     assert core_text.count('def parse_shadowsocks(') == 0

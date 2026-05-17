@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional, Set
 from services.mihomo_proxy_parsers import (
     _yaml_list,
     _yaml_str,
+    parse_openvpn,
     parse_proxy_uri,
+    parse_tailscale,
     parse_vless,
     parse_wireguard,
 )
@@ -252,6 +254,24 @@ def insert_proxies_from_state(content: str, state: Dict[str, Any]) -> str:
                     _warn(f"Прокси {name or f'proxy#{idx}'}: пустой WireGuard-конфиг")
                     continue
                 res = parse_wireguard(conf, custom_name=name)
+                proxy_name = res.name
+                proxy_yaml = append_proxy_meta_yaml(res.yaml, item)
+
+            elif kind == "openvpn":
+                conf = str(item.get("config") or "").strip()
+                if not conf:
+                    _warn(f"Прокси {name or f'proxy#{idx}'}: пустой OpenVPN-конфиг")
+                    continue
+                res = parse_openvpn(conf, custom_name=name)
+                proxy_name = res.name
+                proxy_yaml = append_proxy_meta_yaml(res.yaml, item)
+
+            elif kind == "tailscale":
+                conf = str(item.get("config") or "").strip()
+                if not conf:
+                    _warn(f"Прокси {name or f'proxy#{idx}'}: пустые Tailscale-параметры")
+                    continue
+                res = parse_tailscale(conf, custom_name=name)
                 proxy_name = res.name
                 proxy_yaml = append_proxy_meta_yaml(res.yaml, item)
 

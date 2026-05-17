@@ -886,6 +886,20 @@ function initEngineToggle() {
           return endpoint;
         }
 
+        function extractOpenvpnRemoteHost(confText) {
+          const s = String(confText || "");
+          const m = s.match(/^\s*remote\s+([^\s#;]+)(?:\s+\d+)?/mi);
+          return m ? String(m[1] || "").trim() : "";
+        }
+
+        function extractTailscaleDisplayName(confText) {
+          const s = String(confText || "");
+          const name = s.match(/^\s*(?:-\s*)?(?:name|hostname)\s*[:=]\s*(.+?)\s*$/mi);
+          if (name) return String(name[1] || "").replace(/\s+#.*$/, "").replace(/^['"]|['"]$/g, "").trim();
+          const uri = s.match(/^tailscale:\/\/([^?#/]+)/i);
+          return uri ? decodeURIComponent(uri[1] || "").trim() : "";
+        }
+
         function getProxyDisplayNameForValidation(proxy, idx) {
           if (!proxy || typeof proxy !== "object") return "";
           const explicit = String(proxy.name || "").trim();
@@ -894,6 +908,8 @@ function initEngineToggle() {
           const kind = String(proxy.kind || "").toLowerCase();
           if (kind === "yaml") return extractYamlProxyName(proxy.yaml || "");
           if (kind === "wireguard") return extractWireguardEndpointHost(proxy.config || "");
+          if (kind === "openvpn") return extractOpenvpnRemoteHost(proxy.config || "");
+          if (kind === "tailscale") return extractTailscaleDisplayName(proxy.config || "");
 
           const link = String(proxy.link || "").trim();
           if (link) {
@@ -2276,7 +2292,7 @@ function initEngineToggle() {
           typeLabel.textContent = "Тип узла";
           const typeSelect = document.createElement("select");
           // Tooltip (portal tooltips will pick it from title)
-          typeSelect.title = "Выберите формат узла: авто-распознавание ссылки, конкретный тип (VLESS/Trojan/VMess/SS/Hysteria2), подписка (provider), WireGuard или YAML блок.";
+          typeSelect.title = "Выберите формат узла: авто-распознавание ссылки, конкретный тип (VLESS/Trojan/VMess/SS/Hysteria2), подписка (provider), WireGuard, OpenVPN, Tailscale или YAML блок.";
           typeSelect.innerHTML = `
             <option value="auto">Ссылка (auto)</option>
             <option value="vless">VLESS ссылка</option>
@@ -2286,6 +2302,8 @@ function initEngineToggle() {
             <option value="hysteria2">Hysteria2 ссылка</option>
             <option value="provider">Подписка (proxy-provider)</option>
             <option value="wireguard">WireGuard конфиг</option>
+            <option value="openvpn">OpenVPN .ovpn</option>
+            <option value="tailscale">Tailscale параметры</option>
             <option value="yaml">YAML блок proxy</option>
           `;
           typeWrap.appendChild(typeLabel);
@@ -2369,7 +2387,7 @@ function initEngineToggle() {
               typeBadge.textContent = "Тип: auto";
               dataLabel.textContent = "Ссылка (auto)";
               dataArea.placeholder = "vless://... или https://sub...";
-              dataArea.title = "Авто-режим: вставьте ссылку (vless/trojan/vmess/ss/hysteria2/hy2) или URL подписки (https://...).";
+              dataArea.title = "Авто-режим: вставьте ссылку (vless/trojan/vmess/ss/hysteria2/hy2/tailscale) или URL подписки (https://...).";
               dataArea.rows = 4;
             } else if (t === "provider") {
               typeBadge.textContent = "Тип: provider";
@@ -2406,6 +2424,18 @@ function initEngineToggle() {
               dataLabel.textContent = "WireGuard конфиг";
               dataArea.placeholder = "[Interface]\nAddress = ...";
               dataArea.title = "Вставьте содержимое WireGuard-конфига (.conf): [Interface]/[Peer] и т.д.";
+              dataArea.rows = 6;
+            } else if (t === "openvpn") {
+              typeBadge.textContent = "Тип: openvpn";
+              dataLabel.textContent = "OpenVPN .ovpn";
+              dataArea.placeholder = "client\nremote vpn.example.com 1194\nproto udp\n<ca>\n...\n</ca>\n<tls-crypt>\n...\n</tls-crypt>";
+              dataArea.title = "Вставьте OpenVPN client .ovpn с inline-блоками <ca>, <tls-crypt> и cert/key или auth-user-pass.";
+              dataArea.rows = 8;
+            } else if (t === "tailscale") {
+              typeBadge.textContent = "Тип: tailscale";
+              dataLabel.textContent = "Tailscale параметры";
+              dataArea.placeholder = "hostname: xkeen\n# auth-key: tskey-auth-...\nstate-dir: ./tailscale\nudp: true\naccept-routes: true";
+              dataArea.title = "Укажите Tailscale-параметры в виде key: value или tailscale:// URL.";
               dataArea.rows = 6;
             } else {
               typeBadge.textContent = "Тип: yaml";
@@ -2460,7 +2490,7 @@ function initEngineToggle() {
               if (tags.length) out.tags = tags;
               if (prio !== null && !Number.isNaN(prio)) out.priority = prio;
 
-              if (kind === "wireguard") out.config = data;
+              if (kind === "wireguard" || kind === "openvpn" || kind === "tailscale") out.config = data;
               else if (kind === "yaml") {
                 out.yaml = data;
                 if (xrayJsonSubscription) {
@@ -2648,7 +2678,7 @@ function initEngineToggle() {
 
         function isProxyUriToken(token) {
           const t = String(token || "").trim();
-          return /^(vless|trojan|vmess|ss|hysteria2|hy2):\/\//i.test(t);
+          return /^(vless|trojan|vmess|ss|hysteria2|hy2|tailscale):\/\//i.test(t);
         }
 
         function guessGeoFromText(text) {
@@ -2952,7 +2982,7 @@ function initEngineToggle() {
             }
 
           } else {
-            const m = raw.match(/(vless|trojan|vmess|ss|hysteria2|hy2|https?):\/\//i);
+            const m = raw.match(/(vless|trojan|vmess|ss|hysteria2|hy2|tailscale|https?):\/\//i);
             if (m && typeof m.index === 'number' && m.index > 0) {
               name = raw.slice(0, m.index).trim().replace(/[\-–—:]+\s*$/, "").trim();
               link = raw.slice(m.index).trim();
@@ -3212,7 +3242,7 @@ function initEngineToggle() {
               if (!inputs) return;
 
               const kind = String(inputs.typeSelect && inputs.typeSelect.value || "").toLowerCase();
-              if (kind === "wireguard" || kind === "yaml" || kind === "provider") return;
+              if (kind === "wireguard" || kind === "openvpn" || kind === "tailscale" || kind === "yaml" || kind === "provider") return;
 
               const link = String(inputs.dataArea && inputs.dataArea.value || "").trim();
               if (!link) return;
@@ -3418,7 +3448,7 @@ function initEngineToggle() {
             initial.xray_json_subscription = proxy.xray_json_subscription || proxy.xrayJsonSubscription;
           }
 
-          if (kind === "wireguard") initial.data = String(proxy.config || "");
+          if (kind === "wireguard" || kind === "openvpn" || kind === "tailscale") initial.data = String(proxy.config || "");
           else if (kind === "yaml") initial.data = String(proxy.yaml || "");
           else initial.data = String(proxy.link || "");
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import shlex
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, unquote, urlparse
@@ -750,6 +751,391 @@ def parse_wireguard(conf_text: str, custom_name: Optional[str] = None) -> ProxyP
     return ProxyParseResult(name=name, yaml=yaml)
 
 
+def _strip_config_inline_comment(value: str) -> str:
+    raw = str(value or "")
+    quote = ""
+    out: List[str] = []
+    for idx, ch in enumerate(raw):
+        if quote:
+            out.append(ch)
+            if ch == quote:
+                quote = ""
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            out.append(ch)
+            continue
+        if ch in {"#", ";"} and (idx == 0 or raw[idx - 1].isspace()):
+            break
+        out.append(ch)
+    return "".join(out).strip()
+
+
+def _clean_multiline_block(value: str) -> str:
+    lines = str(value or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(line.rstrip() for line in lines)
+
+
+def _yaml_append_block(lines: List[str], key: str, value: str) -> None:
+    block = _clean_multiline_block(value)
+    if not block:
+        return
+    lines.append(f"  {key}: |")
+    for line in block.splitlines():
+        lines.append(f"    {line}")
+
+
+def _parse_bool_scalar(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on", "enable", "enabled"}:
+        return True
+    if text in {"0", "false", "no", "off", "disable", "disabled"}:
+        return False
+    return None
+
+
+def _openvpn_parts(line: str) -> List[str]:
+    text = _strip_config_inline_comment(line)
+    if not text:
+        return []
+    try:
+        return shlex.split(text, comments=False, posix=True)
+    except ValueError:
+        return text.split()
+
+
+def _normalize_openvpn_proto(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "udp"
+    if raw.startswith("udp"):
+        return "udp"
+    if raw.startswith("tcp"):
+        return "tcp"
+    raise ValueError(f"unsupported OpenVPN proto '{value}': Mihomo supports udp/tcp")
+
+
+def _normalize_openvpn_dev(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "tun"
+    if raw.startswith("tun"):
+        return "tun"
+    raise ValueError(f"unsupported OpenVPN dev '{value}': Mihomo supports tun only")
+
+
+def _normalize_openvpn_cipher(value: str) -> str:
+    supported = {"AES-128-GCM", "AES-256-GCM"}
+    raw = str(value or "").strip()
+    if not raw:
+        return "AES-128-GCM"
+    for part in re.split(r"[:,\s]+", raw):
+        candidate = part.strip().upper()
+        if candidate in supported:
+            return candidate
+    raise ValueError("unsupported OpenVPN cipher: Mihomo supports AES-128-GCM / AES-256-GCM")
+
+
+def _normalize_openvpn_auth(value: str) -> str:
+    raw = str(value or "").strip().upper()
+    if not raw:
+        return "SHA256"
+    if raw == "SHA256":
+        return raw
+    raise ValueError(f"unsupported OpenVPN auth '{value}': Mihomo supports SHA256 only")
+
+
+def _parse_openvpn_inline_blocks(conf_text: str) -> Tuple[Dict[str, List[List[str]]], Dict[str, str]]:
+    scalars: Dict[str, List[List[str]]] = {}
+    blocks: Dict[str, str] = {}
+    block_name = ""
+    block_lines: List[str] = []
+    supported_blocks = {"ca", "cert", "key", "tls-crypt", "auth-user-pass"}
+
+    for line_no, raw_line in enumerate(str(conf_text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"), 1):
+        stripped = raw_line.strip()
+        if block_name:
+            if stripped.lower() == f"</{block_name}>":
+                blocks[block_name] = _clean_multiline_block("\n".join(block_lines))
+                block_name = ""
+                block_lines = []
+                continue
+            block_lines.append(raw_line.rstrip("\n"))
+            continue
+
+        if not stripped or stripped.startswith("#") or stripped.startswith(";"):
+            continue
+
+        block_start = re.fullmatch(r"<([A-Za-z0-9_-]+)>", stripped)
+        if block_start:
+            name = block_start.group(1).lower()
+            if name not in supported_blocks:
+                raise ValueError(f"unsupported OpenVPN inline block <{name}> at line {line_no}")
+            if name in blocks:
+                raise ValueError(f"duplicate OpenVPN inline block <{name}>")
+            block_name = name
+            block_lines = []
+            continue
+
+        if re.fullmatch(r"</[A-Za-z0-9_-]+>", stripped):
+            raise ValueError(f"unexpected OpenVPN inline block close at line {line_no}")
+
+        parts = _openvpn_parts(raw_line)
+        if not parts:
+            continue
+        key = parts[0].strip().lower()
+        if key:
+            scalars.setdefault(key, []).append(parts[1:])
+
+    if block_name:
+        raise ValueError(f"unterminated OpenVPN inline block <{block_name}>")
+
+    return scalars, blocks
+
+
+def _openvpn_first(scalars: Dict[str, List[List[str]]], key: str) -> List[str]:
+    values = scalars.get(key.lower()) or []
+    return values[0] if values else []
+
+
+def _openvpn_first_text(scalars: Dict[str, List[List[str]]], key: str) -> str:
+    parts = _openvpn_first(scalars, key)
+    return " ".join(parts).strip()
+
+
+def _openvpn_auth_user_pass(
+    scalars: Dict[str, List[List[str]]], blocks: Dict[str, str]
+) -> Tuple[str, str]:
+    block = blocks.get("auth-user-pass") or ""
+    if block.strip():
+        values = [
+            _strip_config_inline_comment(line).strip()
+            for line in block.splitlines()
+            if _strip_config_inline_comment(line).strip()
+        ]
+        if values:
+            return values[0], values[1] if len(values) > 1 else ""
+
+    username = _openvpn_first_text(scalars, "username")
+    password = _openvpn_first_text(scalars, "password")
+    if username:
+        return username, password
+
+    parts = _openvpn_first(scalars, "auth-user-pass")
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    if len(parts) == 1 and ":" in parts[0]:
+        user, pwd = parts[0].split(":", 1)
+        return user, pwd
+    return "", ""
+
+
+def parse_openvpn(conf_text: str, custom_name: Optional[str] = None) -> ProxyParseResult:
+    """Parse an OpenVPN .ovpn client config into a Mihomo openvpn proxy block."""
+    scalars, blocks = _parse_openvpn_inline_blocks(conf_text)
+
+    remote = _openvpn_first(scalars, "remote")
+    if len(remote) < 2:
+        raise ValueError("Invalid OpenVPN config: missing `remote <host> <port>`")
+
+    server = str(remote[0]).strip()
+    try:
+        port = int(str(remote[1]).strip())
+    except Exception as exc:
+        raise ValueError("Invalid OpenVPN config: remote port must be a number") from exc
+    if not server or port < 1 or port > 65535:
+        raise ValueError("Invalid OpenVPN config: invalid remote host/port")
+
+    remote_proto = str(remote[2]).strip() if len(remote) >= 3 else ""
+    proto = _normalize_openvpn_proto(_openvpn_first_text(scalars, "proto") or remote_proto)
+    dev = _normalize_openvpn_dev(_openvpn_first_text(scalars, "dev"))
+    cipher = _normalize_openvpn_cipher(
+        _openvpn_first_text(scalars, "cipher")
+        or _openvpn_first_text(scalars, "data-ciphers")
+        or _openvpn_first_text(scalars, "ncp-ciphers")
+    )
+    auth = _normalize_openvpn_auth(_openvpn_first_text(scalars, "auth"))
+
+    ca = blocks.get("ca") or ""
+    cert = blocks.get("cert") or ""
+    key = blocks.get("key") or ""
+    tls_crypt = blocks.get("tls-crypt") or ""
+    username, password = _openvpn_auth_user_pass(scalars, blocks)
+
+    if not ca.strip():
+        raise ValueError("Invalid OpenVPN config: missing inline <ca> block")
+    if not tls_crypt.strip():
+        raise ValueError("Invalid OpenVPN config: missing inline <tls-crypt> block")
+    if not ((cert.strip() and key.strip()) or username.strip()):
+        raise ValueError("Invalid OpenVPN config: requires inline <cert>/<key> or auth-user-pass username")
+
+    mtu_text = _openvpn_first_text(scalars, "mtu") or _openvpn_first_text(scalars, "tun-mtu")
+    mtu: Optional[int] = None
+    if mtu_text:
+        try:
+            mtu = int(str(mtu_text).split()[0])
+        except Exception:
+            mtu = None
+
+    dns_items: List[str] = []
+    for args in scalars.get("dhcp-option") or []:
+        if len(args) >= 2 and str(args[0]).strip().upper() == "DNS":
+            dns = str(args[1]).strip()
+            if dns:
+                dns_items.append(dns)
+
+    name = custom_name or server
+
+    yaml_lines: List[str] = []
+    yaml_lines.append(f"- name: {_yaml_str(name)}")
+    yaml_lines.append("  type: openvpn")
+    yaml_lines.append(f"  server: {_yaml_str(server)}")
+    yaml_lines.append(f"  port: {port}")
+    yaml_lines.append(f"  proto: {_yaml_str(proto)}")
+    yaml_lines.append(f"  dev: {_yaml_str(dev)}")
+    yaml_lines.append(f"  cipher: {_yaml_str(cipher)}")
+    yaml_lines.append(f"  auth: {_yaml_str(auth)}")
+    if username:
+        yaml_lines.append(f"  username: {_yaml_str(username)}")
+    if password:
+        yaml_lines.append(f"  password: {_yaml_str(password)}")
+    _yaml_append_block(yaml_lines, "ca", ca)
+    if cert:
+        _yaml_append_block(yaml_lines, "cert", cert)
+    if key:
+        _yaml_append_block(yaml_lines, "key", key)
+    _yaml_append_block(yaml_lines, "tls-crypt", tls_crypt)
+    if mtu:
+        yaml_lines.append(f"  mtu: {mtu}")
+    yaml_lines.append("  udp: true")
+    if dns_items:
+        yaml_lines.append("  remote-dns-resolve: true")
+        yaml_lines.append(f"  dns: {_yaml_list(dns_items)}")
+
+    return ProxyParseResult(name=name, yaml="\n".join(yaml_lines) + "\n")
+
+
+def _tailscale_normalize_key(key: str) -> str:
+    raw = str(key or "").strip().lower().replace("_", "-")
+    raw = re.sub(r"[^a-z0-9-]", "", raw)
+    aliases = {
+        "tag": "name",
+        "host": "hostname",
+        "authkey": "auth-key",
+        "controlurl": "control-url",
+        "statedir": "state-dir",
+        "acceptroutes": "accept-routes",
+        "exitnode": "exit-node",
+        "exitnodeallowlanaccess": "exit-node-allow-lan-access",
+        "interface": "interface-name",
+        "interfacename": "interface-name",
+        "routingmark": "routing-mark",
+        "ipversion": "ip-version",
+    }
+    compact = raw.replace("-", "")
+    return aliases.get(raw) or aliases.get(compact) or raw
+
+
+def _strip_optional_quotes(value: str) -> str:
+    raw = str(value or "").strip()
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {"'", '"'}:
+        return raw[1:-1]
+    return raw
+
+
+def _parse_tailscale_kv_lines(text: str) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for raw_line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = _strip_config_inline_comment(raw_line).strip()
+        if not line:
+            continue
+        if line.startswith("- "):
+            line = line[2:].strip()
+        match = re.match(r"^([A-Za-z0-9_.-]+)\s*[:=]\s*(.*?)\s*$", line)
+        if not match:
+            continue
+        key = _tailscale_normalize_key(match.group(1))
+        value = _strip_optional_quotes(match.group(2))
+        if key == "type":
+            continue
+        out[key] = value
+    return out
+
+
+def parse_tailscale(config_text: str, custom_name: Optional[str] = None) -> ProxyParseResult:
+    """Parse Tailscale outbound settings into a Mihomo tailscale proxy block."""
+    text = str(config_text or "").strip()
+    fields: Dict[str, Any] = {}
+
+    if text.lower().startswith("tailscale://"):
+        parsed = urlparse(text)
+        qs = parse_qs(parsed.query, keep_blank_values=True)
+        for key, values in qs.items():
+            norm = _tailscale_normalize_key(key)
+            if norm == "type":
+                continue
+            fields[norm] = unquote(values[0] if values else "")
+        if parsed.hostname and "hostname" not in fields:
+            fields["hostname"] = unquote(parsed.hostname)
+        if parsed.fragment and "name" not in fields:
+            fields["name"] = unquote(parsed.fragment)
+    else:
+        fields.update(_parse_tailscale_kv_lines(text))
+        if not fields and text.startswith("tskey-"):
+            fields["auth-key"] = text
+
+    boolean_keys = {"ephemeral", "udp", "accept-routes", "exit-node-allow-lan-access"}
+    for key in list(fields.keys()):
+        if key in boolean_keys:
+            parsed_bool = _parse_bool_scalar(fields.get(key))
+            if parsed_bool is not None:
+                fields[key] = parsed_bool
+
+    if "routing-mark" in fields:
+        try:
+            fields["routing-mark"] = int(str(fields["routing-mark"]).strip())
+        except Exception:
+            fields.pop("routing-mark", None)
+
+    name = custom_name or str(fields.pop("name", "") or fields.get("hostname") or "tailscale").strip()
+    if not name:
+        name = "tailscale"
+
+    if "udp" not in fields:
+        fields["udp"] = True
+
+    yaml_lines: List[str] = []
+    yaml_lines.append(f"- name: {_yaml_str(name)}")
+    yaml_lines.append("  type: tailscale")
+    for key in (
+        "hostname",
+        "auth-key",
+        "control-url",
+        "state-dir",
+        "ephemeral",
+        "udp",
+        "accept-routes",
+        "exit-node",
+        "exit-node-allow-lan-access",
+        "dialer-proxy",
+        "interface-name",
+        "routing-mark",
+        "ip-version",
+    ):
+        if key in fields:
+            _yaml_append_key(yaml_lines, 2, key, fields.get(key))
+
+    return ProxyParseResult(name=name, yaml="\n".join(yaml_lines) + "\n")
+
+
 def _b64_decode_any(s: str) -> bytes:
     s = (s or "").strip()
     if not s:
@@ -1103,6 +1489,8 @@ def parse_proxy_uri(link: str, custom_name: Optional[str] = None) -> ProxyParseR
         return parse_shadowsocks(s, custom_name=custom_name)
     if low.startswith("hysteria2://") or low.startswith("hy2://") or low.startswith("hysteria://"):
         return parse_hysteria2(s, custom_name=custom_name)
+    if low.startswith("tailscale://"):
+        return parse_tailscale(s, custom_name=custom_name)
     raise ValueError("Unsupported proxy scheme")
 
 
@@ -1125,6 +1513,8 @@ __all__ = [
     "ProxyParseResult",
     "parse_vless",
     "parse_wireguard",
+    "parse_openvpn",
+    "parse_tailscale",
     "parse_trojan",
     "parse_vmess",
     "parse_shadowsocks",

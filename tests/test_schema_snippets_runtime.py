@@ -331,6 +331,8 @@ console.log(JSON.stringify({
     )
 
     assert "mihomo-proxy-vless" in payload["proxiesArray"]
+    assert "mihomo-proxy-openvpn" in payload["proxiesArray"]
+    assert "mihomo-proxy-tailscale" in payload["proxiesArray"]
     assert "mihomo-rule-ruleset" in payload["rulesArray"]
     assert "mihomo-proxy-provider-http" in payload["proxyProvidersTopLevel"]
     assert "mihomo-proxy-provider-http" not in payload["proxyProvidersNested"]

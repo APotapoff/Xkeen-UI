@@ -2772,7 +2772,7 @@ vless://...#mytag"></textarea>
             <span class="xk-mi-kicker">Mihomo · Premium import</span>
             <span class="modal-title">Импорт узла</span>
             <p class="xk-mi-subtitle">
-              Поддерживаются <b>vless / trojan / vmess / ss / hysteria2 / hy2</b>, <b>https‑подписка</b> и <b>WireGuard (.conf)</b>.
+              Поддерживаются <b>vless / trojan / vmess / ss / hysteria2 / hy2</b>, <b>https‑подписка</b>, <b>WireGuard (.conf)</b>, <b>OpenVPN (.ovpn)</b> и <b>Tailscale</b>.
               Панель аккуратно преобразует их в YAML и вставит в нужную секцию <code>config.yaml</code>.
             </p>
           </div>
@@ -2802,6 +2802,8 @@ vless://...#mytag"></textarea>
                     <option value="proxy">Proxy link</option>
                     <option value="subscription">HTTPS subscription</option>
                     <option value="wireguard">WireGuard (.conf)</option>
+                    <option value="openvpn">OpenVPN (.ovpn)</option>
+                    <option value="tailscale">Tailscale</option>
                   </select>
                 </label>
 
@@ -2892,7 +2894,7 @@ https://..."></textarea>
             <span class="xk-pt-kicker">Mihomo · Premium proxy tools</span>
             <span class="modal-title">Proxy Tools</span>
             <p class="xk-pt-subtitle">
-              Аккуратные операции над <code>proxies:</code> без ручного редактирования YAML: <b>переименование</b> узла с обновлением групп и <b>точечная замена</b> содержимого по ссылке или <b>WireGuard (.conf)</b>.
+              Аккуратные операции над <code>proxies:</code> без ручного редактирования YAML: <b>переименование</b> узла с обновлением групп и <b>точечная замена</b> содержимого по ссылке, <b>WireGuard (.conf)</b>, <b>OpenVPN (.ovpn)</b> или <b>Tailscale</b>.
             </p>
           </div>
           <button type="button" class="modal-close" id="mihomo-proxy-tools-close-btn" title="Закрыть">×</button>
@@ -2982,6 +2984,8 @@ https://..."></textarea>
                     <select id="mihomo-proxy-tools-replace-type" class="xray-log-select xk-pt-control">
                       <option value="auto">Auto (proxy link)</option>
                       <option value="wireguard">WireGuard (.conf)</option>
+                      <option value="openvpn">OpenVPN (.ovpn)</option>
+                      <option value="tailscale">Tailscale</option>
                     </select>
                   </label>
 
@@ -2996,7 +3000,7 @@ https://..."></textarea>
                     <span class="hint-label">Ссылка / конфиг</span>
                     <textarea id="mihomo-proxy-tools-replace-input" class="xkeen-textarea outbounds-gen-preview xk-pt-textarea" spellcheck="false" placeholder="vless://...
 
-или WireGuard .conf"></textarea>
+или WireGuard/OpenVPN/Tailscale конфиг"></textarea>
                   </label>
 
                   <label class="xk-pt-field">

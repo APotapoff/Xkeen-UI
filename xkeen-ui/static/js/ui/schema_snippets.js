@@ -309,6 +309,22 @@ const MIHOMO_PROXIES_SNIPPETS = [
     insertText: 'name: "ss-proxy"\ntype: ss\nserver: example.com\nport: 8388\ncipher: 2022-blake3-aes-128-gcm\npassword: "your-password"\nudp: true',
     monacoSnippet: 'name: "${1:ss-proxy}"\ntype: ss\nserver: ${2:example.com}\nport: ${3:8388}\ncipher: ${4|2022-blake3-aes-128-gcm,2022-blake3-aes-256-gcm,aes-128-gcm,aes-256-gcm,chacha20-ietf-poly1305|}\npassword: "${5:your-password}"\nudp: true$0',
   },
+  {
+    id: 'mihomo-proxy-openvpn',
+    label: 'proxy: openvpn',
+    detail: 'Mihomo · proxies[]',
+    documentation: 'OpenVPN outbound из Mihomo 1.19.25. Требует ca/tls-crypt и cert+key либо username/password.',
+    insertText: 'name: "openvpn"\ntype: openvpn\nserver: vpn.example.com\nport: 1194\nproto: udp\ncipher: AES-128-GCM\nauth: SHA256\nusername: "user"\npassword: "pass"\nca: |\n  -----BEGIN CERTIFICATE-----\n  ...\n  -----END CERTIFICATE-----\ntls-crypt: |\n  -----BEGIN OpenVPN Static key V1-----\n  ...\n  -----END OpenVPN Static key V1-----\nudp: true',
+    monacoSnippet: 'name: "${1:openvpn}"\ntype: openvpn\nserver: ${2:vpn.example.com}\nport: ${3:1194}\nproto: ${4|udp,tcp|}\ncipher: ${5|AES-128-GCM,AES-256-GCM|}\nauth: SHA256\nusername: "${6:user}"\npassword: "${7:pass}"\nca: |\n  ${8:-----BEGIN CERTIFICATE-----}\n  ${9:...}\n  ${10:-----END CERTIFICATE-----}\ntls-crypt: |\n  ${11:-----BEGIN OpenVPN Static key V1-----}\n  ${12:...}\n  ${13:-----END OpenVPN Static key V1-----}\nudp: true$0',
+  },
+  {
+    id: 'mihomo-proxy-tailscale',
+    label: 'proxy: tailscale',
+    detail: 'Mihomo · proxies[]',
+    documentation: 'Tailscale outbound из Mihomo 1.19.25. Не требует server/port; для выхода в интернет нужен exit-node или subnet routes.',
+    insertText: 'name: "tailscale"\ntype: tailscale\nhostname: xkeen\nstate-dir: ./tailscale\nudp: true\naccept-routes: true\nexit-node: auto:any',
+    monacoSnippet: 'name: "${1:tailscale}"\ntype: tailscale\nhostname: ${2:xkeen}\nstate-dir: ${3:./tailscale}\nudp: true\naccept-routes: ${4|true,false|}\nexit-node: ${5:auto:any}$0',
+  },
 ];
 
 /* ════════════════════════════════════════════════════════════

@@ -140,6 +140,60 @@ def test_mihomo_yaml_schema_runtime_accepts_documented_vless_tls_reality_fields(
     assert result["diagnostics"] == []
 
 
+def test_mihomo_yaml_schema_runtime_accepts_openvpn_auth_user_pass_proxy():
+    result = _run_mihomo_yaml_schema(
+        "\n".join([
+            "proxies:",
+            "  - name: openvpn",
+            "    type: openvpn",
+            "    server: vpn.example.com",
+            "    port: 1194",
+            "    proto: udp",
+            "    cipher: AES-256-GCM",
+            "    auth: SHA256",
+            "    username: user",
+            "    password: secret",
+            "    ca: |",
+            "      -----BEGIN CERTIFICATE-----",
+            "      MIIBexample",
+            "      -----END CERTIFICATE-----",
+            "    tls-crypt: |",
+            "      -----BEGIN OpenVPN Static key V1-----",
+            "      00000000000000000000000000000000",
+            "      -----END OpenVPN Static key V1-----",
+            "    udp: true",
+            "    remote-dns-resolve: true",
+            "    dns: [1.1.1.1, 8.8.8.8]",
+            "",
+        ])
+    )
+
+    assert result["ok"] is True
+    assert result["parseOk"] is True
+    assert result["diagnostics"] == []
+
+
+def test_mihomo_yaml_schema_runtime_accepts_tailscale_proxy_without_server_port():
+    result = _run_mihomo_yaml_schema(
+        "\n".join([
+            "proxies:",
+            "  - name: tailscale",
+            "    type: tailscale",
+            "    hostname: xkeen",
+            "    state-dir: ./tailscale",
+            "    udp: true",
+            "    accept-routes: true",
+            "    exit-node: auto:any",
+            "    exit-node-allow-lan-access: true",
+            "",
+        ])
+    )
+
+    assert result["ok"] is True
+    assert result["parseOk"] is True
+    assert result["diagnostics"] == []
+
+
 def test_mihomo_yaml_schema_runtime_accepts_documented_xhttp_extended_fields():
     result = _run_mihomo_yaml_schema(
         "\n".join([
@@ -273,6 +327,23 @@ def test_mihomo_yaml_schema_runtime_reports_required_fields_for_proxy_groups():
     assert any("`type`" in message for message in messages)
     assert all(item["path"] == "proxy-groups[0]" for item in result["diagnostics"][:2])
     assert result["diagnostics"][0]["line"] == 2
+
+
+def test_mihomo_yaml_schema_runtime_still_requires_server_port_for_regular_proxy():
+    result = _run_mihomo_yaml_schema(
+        "\n".join([
+            "proxies:",
+            "  - name: vless-node",
+            "    type: vless",
+            "    uuid: 11111111-1111-1111-1111-111111111111",
+            "",
+        ])
+    )
+
+    assert result["ok"] is False
+    messages = [str(item["message"]) for item in result["diagnostics"]]
+    assert any("`server`" in message for message in messages)
+    assert any("`port`" in message for message in messages)
 
 
 def test_mihomo_yaml_schema_runtime_requires_provider_url_for_http_proxy_provider():

@@ -52,6 +52,7 @@ from mihomo_server_core import (
     validate_config,
 )
 from services.mihomo_proxy_parsers import parse_wireguard
+from services.mihomo_proxy_parsers import parse_openvpn, parse_tailscale
 from services.mihomo_proxy_config import (
     apply_proxy_insert,
     rename_proxy_in_config,
@@ -1119,6 +1120,68 @@ def create_mihomo_blueprint(
                 "Не удалось преобразовать WireGuard-конфиг в формат Mihomo.",
                 code="parse_wireguard_failed",
                 hint="Проверьте содержимое конфигурации и попробуйте снова.",
+                exc=e,
+                status=400,
+            )
+
+    @bp.post("/api/mihomo/parse/openvpn")
+    def api_mihomo_parse_openvpn():
+        """Parse OpenVPN .ovpn config text and return Mihomo proxy YAML block."""
+        guard = _patch_guard()
+        if guard is not None:
+            return guard
+
+        data = request.get_json(silent=True) or {}
+        text = _norm_text(data.get("text") or "")
+        name = (data.get("name") or "").strip() or None
+
+        if request.content_length is None:
+            total = len(text) + (len(name) if name else 0)
+            if total > _PATCH_MAX_BYTES:
+                return _api_error("payload too large", 413, ok=False)
+
+        if not text.strip():
+            return _api_error("text is required", 400, ok=False)
+
+        try:
+            r = parse_openvpn(text, custom_name=name)
+            return jsonify({"ok": True, "proxy_name": r.name, "proxy_yaml": r.yaml}), 200
+        except Exception as e:
+            return _mihomo_exception(
+                "Не удалось преобразовать OpenVPN-конфиг в формат Mihomo.",
+                code="parse_openvpn_failed",
+                hint="Проверьте .ovpn: нужны remote, <ca>, <tls-crypt> и cert/key либо auth-user-pass.",
+                exc=e,
+                status=400,
+            )
+
+    @bp.post("/api/mihomo/parse/tailscale")
+    def api_mihomo_parse_tailscale():
+        """Parse Tailscale outbound settings and return Mihomo proxy YAML block."""
+        guard = _patch_guard()
+        if guard is not None:
+            return guard
+
+        data = request.get_json(silent=True) or {}
+        text = _norm_text(data.get("text") or "")
+        name = (data.get("name") or "").strip() or None
+
+        if request.content_length is None:
+            total = len(text) + (len(name) if name else 0)
+            if total > _PATCH_MAX_BYTES:
+                return _api_error("payload too large", 413, ok=False)
+
+        if not text.strip():
+            return _api_error("text is required", 400, ok=False)
+
+        try:
+            r = parse_tailscale(text, custom_name=name)
+            return jsonify({"ok": True, "proxy_name": r.name, "proxy_yaml": r.yaml}), 200
+        except Exception as e:
+            return _mihomo_exception(
+                "Не удалось преобразовать Tailscale-параметры в формат Mihomo.",
+                code="parse_tailscale_failed",
+                hint="Укажите auth-key/hostname/state-dir или tailscale:// URL с параметрами.",
                 exc=e,
                 status=400,
             )

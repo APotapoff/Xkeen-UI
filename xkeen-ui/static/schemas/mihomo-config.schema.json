@@ -619,7 +619,7 @@
 
     "proxies": {
       "type": "array",
-      "description": "Список прокси-серверов. Каждый прокси — объект с `name`, `type`, `server`, `port` и настройками транспорта. Используются в `proxy-groups.proxies` по имени.",
+      "description": "Список прокси-серверов. Каждый прокси — объект с `name`, `type` и настройками конкретного протокола; большинству типов нужны `server`/`port`, но Tailscale работает без них. Используются в `proxy-groups.proxies` по имени.",
       "items": { "$ref": "#/definitions/proxy" },
       "x-ui-explain": "Список конкретных серверов, к которым Mihomo умеет подключаться. Поля различаются для разных `type` (ss, vmess, vless, trojan, hysteria2 и т.д.).",
       "x-ui-use-case": "Сюда добавляют новые узлы вручную; массовые подписки удобнее подключать через `proxy-providers`.",
@@ -730,12 +730,12 @@
   "definitions": {
     "proxy": {
       "type": "object",
-      "description": "Прокси-сервер — одиночный узел. Обязательны `name`, `type`, `server`, `port`. Остальные поля зависят от `type` (uuid для vless/vmess, password для trojan/ss, и т.д.).",
+      "description": "Прокси-сервер — одиночный узел. Обязательны `name` и `type`; остальные обязательные поля зависят от `type` (`server`/`port` для обычных сетевых прокси, OpenVPN-сертификаты, Tailscale-параметры и т.д.).",
       "x-ui-explain": "Это один конкретный сервер/узел, к которому Mihomo подключается. Здесь описывают адрес, порт, тип протокола и transport/TLS-параметры этого узла.",
       "x-ui-use-case": "Используется, когда вы добавляете сервер вручную или хотите понять, что именно приехало из подписки provider-а.",
       "x-ui-example": "{ name: \"DE-01\", type: \"vless\", server: \"edge.example.com\", port: 443, uuid: \"11111111-1111-1111-1111-111111111111\", tls: true }",
       "x-ui-warning": "Обязательные поля зависят от `type`, а transport-блоки (`ws-opts`, `grpc-opts`, `xhttp-opts`) работают только вместе с подходящим `network`.",
-      "required": ["name", "type", "server", "port"],
+      "required": ["name", "type"],
       "dependentRequired": {
         "reality-opts": ["client-fingerprint", "servername"]
       },
@@ -747,7 +747,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["ss", "ssr", "vmess", "vless", "trojan", "hysteria", "hysteria2", "wireguard", "tuic", "socks5", "http", "ssh", "snell", "anytls"],
+          "enum": ["ss", "ssr", "vmess", "vless", "trojan", "hysteria", "hysteria2", "wireguard", "openvpn", "tailscale", "tuic", "socks5", "http", "ssh", "snell", "anytls"],
           "description": "Тип протокола. `vless`+`reality` и `hysteria2` — современные рекомендуемые варианты. `ssr` устарел, `vmess` нежелателен из-за проблем с fingerprint'ом."
         },
         "server": {
@@ -764,7 +764,7 @@
         },
         "password": {
           "type": "string",
-          "description": "Пароль — для ss/trojan/hysteria2/snell/tuic."
+          "description": "Пароль — для ss/trojan/hysteria2/snell/tuic, а также OpenVPN auth-user-pass."
         },
         "uuid": {
           "type": "string",
@@ -869,6 +869,100 @@
           "type": "string",
           "description": "Имя другого прокси, через который будет установлено соединение к данному серверу (цепочка).",
           "examples": ["warp", "jumphost"]
+        },
+        "interface-name": {
+          "type": "string",
+          "description": "Имя исходящего сетевого интерфейса для этого прокси.",
+          "examples": ["nwan0", "tailscale0", "eth0"]
+        },
+        "routing-mark": {
+          "type": "integer",
+          "description": "fwmark для исходящих соединений этого прокси."
+        },
+
+        "proto": {
+          "type": "string",
+          "enum": ["udp", "tcp"],
+          "description": "OpenVPN transport protocol. Mihomo поддерживает udp/tcp; по умолчанию udp."
+        },
+        "dev": {
+          "type": "string",
+          "enum": ["tun"],
+          "description": "OpenVPN device type. Сейчас поддерживается только tun."
+        },
+        "auth": {
+          "type": "string",
+          "enum": ["SHA256"],
+          "description": "OpenVPN auth digest. Сейчас поддерживается SHA256."
+        },
+        "ca": {
+          "type": "string",
+          "description": "OpenVPN CA certificate PEM из inline-блока <ca>."
+        },
+        "cert": {
+          "type": "string",
+          "description": "OpenVPN client certificate PEM. Можно опустить при auth-user-pass."
+        },
+        "key": {
+          "type": "string",
+          "description": "OpenVPN client private key PEM. Используется вместе с `cert`."
+        },
+        "tls-crypt": {
+          "type": "string",
+          "description": "OpenVPN static key из inline-блока <tls-crypt>."
+        },
+        "username": {
+          "type": "string",
+          "description": "OpenVPN username для auth-user-pass режима."
+        },
+        "mtu": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "MTU для WireGuard/OpenVPN-подобных туннелей."
+        },
+        "remote-dns-resolve": {
+          "type": "boolean",
+          "description": "Для OpenVPN/WireGuard: резолвить DNS через удалённый туннель."
+        },
+        "dns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "DNS-серверы, связанные с прокси-туннелем.",
+          "examples": [["1.1.1.1", "8.8.8.8"]]
+        },
+
+        "hostname": {
+          "type": "string",
+          "description": "Tailscale device name для tsnet."
+        },
+        "auth-key": {
+          "type": "string",
+          "description": "Tailscale auth key. Если не задан, Mihomo может вывести интерактивный login URL."
+        },
+        "control-url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Tailscale/Headscale control server URL."
+        },
+        "state-dir": {
+          "type": "string",
+          "description": "Каталог состояния Tailscale/tsnet."
+        },
+        "ephemeral": {
+          "type": "boolean",
+          "description": "Войти в tailnet как ephemeral node."
+        },
+        "accept-routes": {
+          "type": "boolean",
+          "description": "Принимать subnet routes из tailnet."
+        },
+        "exit-node": {
+          "type": "string",
+          "description": "Tailscale exit node IP/имя или auto:any."
+        },
+        "exit-node-allow-lan-access": {
+          "type": "boolean",
+          "description": "Разрешить доступ к локальной LAN при использовании exit node."
         },
 
         "flow": {
@@ -1035,6 +1129,52 @@
         }
       },
       "allOf": [
+        {
+          "if": {
+            "required": ["type"],
+            "properties": {
+              "type": { "not": { "const": "tailscale" } }
+            }
+          },
+          "then": {
+            "required": ["server", "port"]
+          }
+        },
+        {
+          "if": {
+            "required": ["type"],
+            "properties": {
+              "type": { "const": "openvpn" }
+            }
+          },
+          "then": {
+            "required": ["server", "port", "ca", "tls-crypt"],
+            "anyOf": [
+              { "required": ["cert", "key"] },
+              { "required": ["username"] }
+            ],
+            "properties": {
+              "type": { "const": "openvpn" },
+              "proto": { "enum": ["udp", "tcp"] },
+              "dev": { "const": "tun" },
+              "cipher": { "enum": ["AES-128-GCM", "AES-256-GCM"] },
+              "auth": { "const": "SHA256" }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["type"],
+            "properties": {
+              "type": { "const": "tailscale" }
+            }
+          },
+          "then": {
+            "properties": {
+              "type": { "const": "tailscale" }
+            }
+          }
+        },
         {
           "if": {
             "required": ["ws-opts"]
